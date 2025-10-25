@@ -4,21 +4,39 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 @Injectable()
 export class SupabaseService {
-  private supabase: SupabaseClient;
+  private supabaseUrl: string;
+  private supabaseAnonKey: string;
+  private supabaseServiceRoleKey: string;
 
   constructor(private configService: ConfigService) {
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
+    this.supabaseUrl = this.configService.get<string>('SUPABASE_URL')!;
+    this.supabaseAnonKey = this.configService.get<string>('SUPABASE_ANON_KEY')!;
+    this.supabaseServiceRoleKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    if (!supabaseUrl || !supabaseKey) {
+    if (!this.supabaseUrl || !this.supabaseAnonKey || !this.supabaseServiceRoleKey) {
       throw new Error('Faltan variables de entorno de Supabase en .env');
     }
 
-    this.supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('Cliente de Supabase inicializado correctamente');
+    console.log('Servicio de Supabase inicializado correctamente');
   }
 
-  getClient(): SupabaseClient {
-    return this.supabase;
+ 
+  getClient(accessToken?: string): SupabaseClient {
+    const client = createClient(this.supabaseUrl, this.supabaseAnonKey, {
+      global: {
+        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+      },
+    });
+    return client;
+  }
+
+  
+  getAdminClient(): SupabaseClient {
+    return createClient(this.supabaseUrl, this.supabaseServiceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
   }
 }

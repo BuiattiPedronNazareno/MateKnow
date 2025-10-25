@@ -1,183 +1,101 @@
-import { 
-  Injectable, 
-  BadRequestException, 
-  InternalServerErrorException,
-  UnauthorizedException 
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { SupabaseService } from '../lib/supabase.service';
-import { LoginDto } from './dto/login.dto';
-import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
   constructor(private supabaseService: SupabaseService) {}
 
   /**
-   * Inicia sesión de usuario
+   * Valida un JWT token de Supabase y retorna los datos del usuario
    */
-  async login(loginDto: LoginDto) {
-    const { email, password } = loginDto;
-    const supabase = this.supabaseService.getClient();
-
+  async validateToken(token: string) {
     try {
-      // Autenticación en Supabase
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Crear cliente con el token del usuario
+      const supabase = this.supabaseService.getClient(token);
 
-      if (error) {
-        throw new UnauthorizedException('Credenciales inválidas');
-      }
+      // Verificar el token y obtener el usuario
+      const { data: { user }, error } = await supabase.auth.getUser(token);
 
-      if (!data.user) {
-        throw new UnauthorizedException('Credenciales inválidas');
-      }
-
-      // Obtener información del usuario en la tabla 'usuarios'
-      const { data: userData, error: userError } = await supabase
-        .from('usuarios')
-        .select('id, nombre, apellido, rol_id')
-        .eq('id', data.user.id)
-        .single();
-
-      if (userError) {
-        throw new BadRequestException('Error al obtener datos del usuario');
-      }
-
-      return {
-        message: 'Login exitoso',
-        user: userData,
-        session: {
-          access_token: data.session?.access_token,
-          refresh_token: data.session?.refresh_token,
-        },
-      };
-    } catch (error) {
-      if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Error en el proceso de login');
-    }
-  }
-
-  /**
-   * Registra un nuevo usuario
-   */
-  async register(registerDto: RegisterDto) {
-    const { email, password, nombre, apellido } = registerDto;
-    const supabase = this.supabaseService.getClient();
-
-    try {
-      // Crear usuario en Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (error) {
-        throw new BadRequestException(error.message);
-      }
-
-      if (!data.user) {
-        throw new InternalServerErrorException(
-          'No se pudo crear el usuario en Supabase Auth',
-        );
-      }
-
-      // Insertar registro en tabla 'usuarios'
-      const { error: insertError } = await supabase
-        .from('usuarios')
-        .insert({
-          id: data.user.id,
-          email,
-          nombre,
-          apellido,
-          rol_id: 1, // Miembro por defecto
-        });
-
-      if (insertError) {
-        // Si falla la inserción, intentar eliminar el usuario de Auth
-        try {
-          await supabase.auth.admin.deleteUser(data.user.id);
-        } catch (deleteError) {
-          console.error('Error al revertir creación de usuario:', deleteError);
-        }
-        throw new BadRequestException('Error al crear el perfil del usuario ', insertError.message);
-      }
-
-      return {
-        message: 'Usuario registrado correctamente',
-        user: {
-          id: data.user.id,
-          email: data.user.email,
-          nombre,
-          apellido,
-          rol_id: 1,
-        },
-      };
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Error en el proceso de registro');
-    }
-  }
-
-  /**
-   * Valida un token de acceso
-   */
-  async validateToken(accessToken: string) {
-    const supabase = this.supabaseService.getClient();
-
-    try {
-      const { data, error } = await supabase.auth.getUser(accessToken);
-
-      if (error || !data.user) {
+      if (error || !user) {
         throw new UnauthorizedException('Token inválido o expirado');
       }
 
-      // Obtener información del usuario
+      // Opcionalmente, obtener datos adicionales del usuario desde tu tabla usuarios
       const { data: userData, error: userError } = await supabase
         .from('usuarios')
-        .select('id, email, nombre, apellido, rol_id')
-        .eq('id', data.user.id)
+        .select('id, nombre, apellido, email')
+        .eq('id', user.id)
         .single();
 
       if (userError) {
-        throw new BadRequestException('Usuario no encontrado');
+        console.warn('No se pudo obtener datos adicionales del usuario:', userError);
       }
 
-      return userData;
+      return {
+        id: user.id,
+        email: user.email,
+        // Agregar datos adicionales si existen
+        ...(userData && {
+          nombre: userData.nombre,
+          apellido: userData.apellido,
+        }),
+      };
     } catch (error) {
-      if (error instanceof UnauthorizedException || error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Error al validar el token');
+      console.error('Error en validateToken:', error);
+      throw new UnauthorizedException('Token inválido o expirado');
     }
   }
 
   /**
-   * Cierra la sesión del usuario
+   * Ejemplo de login (si lo necesitas)
    */
-  async logout(accessToken: string) {
+  async login(email: string, password: string) {
     const supabase = this.supabaseService.getClient();
 
-    try {
-      const { error } = await supabase.auth.signOut();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      if (error) {
-        throw new BadRequestException('Error al cerrar sesión');
-      }
-
-      return {
-        message: 'Sesión cerrada exitosamente',
-      };
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new InternalServerErrorException('Error al cerrar sesión');
+    if (error) {
+      throw new UnauthorizedException('Credenciales inválidas');
     }
+
+    return {
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      user: data.user,
+    };
+  }
+
+  /**
+   * Ejemplo de registro (si lo necesitas)
+   */
+  async register(email: string, password: string, nombre: string, apellido: string) {
+    const supabase = this.supabaseService.getClient();
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw new UnauthorizedException('Error al registrar usuario: ' + error.message);
+    }
+
+    // Insertar datos adicionales en la tabla usuarios
+    if (data.user) {
+      await supabase.from('usuarios').insert({
+        id: data.user.id,
+        email,
+        nombre,
+        apellido,
+      });
+    }
+
+    return {
+      accessToken: data.session?.access_token,
+      user: data.user,
+    };
   }
 }
