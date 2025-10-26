@@ -40,16 +40,29 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await authService.login(formData);
+      // Hacer login
+      await authService.login(formData);
       
-      // Redirigir al dashboard o página principal
+      // Verificar que el token se guardó correctamente
+      const token = localStorage.getItem('access_token');
+      console.log('Token guardado:', token ? 'Sí' : 'No');
+      
+      if (!token) {
+        throw new Error('No se pudo guardar el token');
+      }
+      
+      // Pequeño delay para asegurar que todo esté listo
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Redirigir al dashboard
       router.push('/dashboard');
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Error al iniciar sesión';
+      console.error('Error en login:', err);
+      const errorMessage = err.response?.data?.message || err.message || 'Error al iniciar sesión';
       setError(errorMessage);
-    } finally {
       setLoading(false);
     }
+    // No setear loading a false si el login fue exitoso, para mantener el spinner mientras redirige
   };
 
   const togglePasswordVisibility = () => {

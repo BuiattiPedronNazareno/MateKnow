@@ -1,8 +1,13 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { Headers } from '@nestjs/common';
 
 @Controller('auth')
 export class AuthController {
@@ -10,42 +15,38 @@ export class AuthController {
 
   /**
    * POST /auth/login
-   * Inicia sesión con email y password
+   * Iniciar sesión
    */
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+    return this.authService.login(loginDto.email, loginDto.password);
   }
 
   /**
    * POST /auth/register
-   * Registra un nuevo usuario
+   * Registrar nuevo usuario
    */
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   async register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+    return this.authService.register(
+      registerDto.email,
+      registerDto.password,
+      registerDto.nombre,
+      registerDto.apellido,
+    );
   }
 
   /**
    * POST /auth/logout
-   * Cierra la sesión del usuario actual
+   * Cerrar sesión (opcional - el cliente puede simplemente borrar el token)
    */
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@Body('access_token') access_token: string) {
-    return this.authService.logout(access_token);
+  async logout() {
+    return {
+      message: 'Sesión cerrada exitosamente',
+    };
   }
-
-  /**
-   * POST /auth/validate
-   * Valida un access token de Supabase y devuelve la info del usuario
-   */
-  @Post('validate')
-@HttpCode(HttpStatus.OK)
-async validate(@Headers('authorization') authHeader: string) {
-  const token = authHeader?.replace('Bearer ', '');
-  return this.authService.validateToken(token);
-}
 }
