@@ -95,6 +95,7 @@ export class ClaseService {
   /**
    * Unirse a una clase como alumno usando el código
    * CA1: El usuario se une a una clase con un código único
+   * MODIFICADO: Solo funciona para clases públicas
    */
   async joinClase(joinClaseDto: JoinClaseDto, userId: string, accessToken?: string) {
     const supabase = this.supabaseService.getClient(accessToken);
@@ -109,6 +110,13 @@ export class ClaseService {
 
       if (claseError || !clase) {
         throw new NotFoundException('Clase no encontrada con ese código');
+      }
+
+      // NUEVA VALIDACIÓN: Verificar si la clase es privada
+      if (!clase.is_publico) {
+        throw new ForbiddenException(
+          'Esta clase es privada. Contacta al profesor para que te matricule manualmente.'
+        );
       }
 
       // Verificar si ya está inscrito
@@ -148,7 +156,9 @@ export class ClaseService {
         },
       };
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (error instanceof NotFoundException || 
+          error instanceof BadRequestException || 
+          error instanceof ForbiddenException) {
         throw error;
       }
       throw new InternalServerErrorException('Error al unirse a la clase');
