@@ -1,21 +1,20 @@
 import {
-  IsNotEmpty,
   IsString,
-  IsNumber,
-  IsBoolean,
-  IsArray,
+  IsNotEmpty,
   IsUUID,
   IsOptional,
+  IsNumber,
+  IsBoolean,
   ValidateNested,
   ArrayMinSize,
+  IsArray,
   Min,
-} from '@nestjs/class-validator';
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
-import { Type } from '@nestjs/class-transformer';
-
-class OpcionDto {
+class CreateOpcionEjercicioDto {
   @IsString({ message: 'El texto de la opción debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El texto de la opción es obligatorio' })
+  @IsNotEmpty({ message: 'El texto de la opción no puede estar vacío' })
   texto: string;
 
   @IsBoolean({ message: 'isCorrecta debe ser un booleano' })
@@ -23,13 +22,17 @@ class OpcionDto {
 }
 
 export class CreateEjercicioDto {
-  @IsUUID('4', { message: 'El tipo_id debe ser un UUID válido' })
-  @IsNotEmpty({ message: 'El tipo de ejercicio es obligatorio' })
-  tipoId: string;
-
   @IsString({ message: 'El enunciado debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El enunciado es obligatorio' })
+  @IsNotEmpty({ message: 'El enunciado no puede estar vacío' })
   enunciado: string;
+
+  @IsUUID('4', {
+    message: 'El ID del tipo de ejercicio debe ser un UUID válido',
+  })
+  @IsNotEmpty({
+    message: 'El ID del tipo de ejercicio es obligatorio',
+  })
+  tipoId: string;
 
   @IsNumber({}, { message: 'Los puntos deben ser un número' })
   @Min(0, { message: 'Los puntos no pueden ser negativos' })
@@ -40,9 +43,9 @@ export class CreateEjercicioDto {
   @IsOptional()
   isVersus?: boolean = false;
 
-  @IsArray({ message: 'Las opciones deben ser un array' })
   @ValidateNested({ each: true })
-  @Type(() => OpcionDto)
-  @ArrayMinSize(2, { message: 'Debe haber al menos 2 opciones' })
-  opciones: OpcionDto[];
+  @Type(() => CreateOpcionEjercicioDto)
+  @ArrayMinSize(1, { message: 'Debe haber al menos una opción de respuesta' })
+  @IsArray({ message: 'Las opciones deben ser un array' })
+  opciones: CreateOpcionEjercicioDto[];
 }
