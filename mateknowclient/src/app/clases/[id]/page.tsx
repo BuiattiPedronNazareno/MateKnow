@@ -12,6 +12,7 @@ import {
   IconButton,
   Chip,
   List,
+  ListItemButton,
   ListItem,
   ListItemText,
   ListItemAvatar,
@@ -32,6 +33,9 @@ import {
   SelectChangeEvent,
   Menu,
   MenuItem,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
 } from '@mui/material';
 
 import {
@@ -45,6 +49,8 @@ import {
   PersonAdd,
   Campaign,
   Add,
+  Visibility,
+  VisibilityOff,
   MoreVert,
   Edit,
   Delete,
@@ -53,6 +59,9 @@ import { claseService, ClaseDetalle } from '@/app/services/claseService';
 import { authService } from '@/app/services/authService';
 import { actividadService } from '@/app/services/actividadService';
 import MatricularAlumnoDialog from '@/app/components/MatricularAlumnoDialog';
+import EjercicioForm from '@/app/components/EjercicioForm';
+import { ejercicioService } from '@/app/services/ejercicioService';
+import OptionsEditor from '@/app/actividades/[claseId]/components/OptionsEditor';
 import { anuncioService, Anuncio, CreateAnuncioData } from '@/app/services/anuncioService';
 
 interface TabPanelProps {
@@ -99,6 +108,42 @@ export default function DetalleClasePage() {
 
   const [openVerActividad, setOpenVerActividad] = useState(false);
   const [verActividad, setVerActividad] = useState<any | null>(null);
+  const [openCrearEjercicioModal, setOpenCrearEjercicioModal] = useState(false);
+  const [crearEjercicioAttachActividadId, setCrearEjercicioAttachActividadId] = useState<string | null>(null);
+  const [crearEjercicioLoading, setCrearEjercicioLoading] = useState(false);
+  const [crearEjercicioError, setCrearEjercicioError] = useState('');
+
+  const handleCrearEjercicioSubmit = async (payload: any) => {
+    setCrearEjercicioLoading(true);
+    setCrearEjercicioError('');
+    try {
+      const res = await ejercicioService.crearEjercicio(payload);
+      const newEjercicioId = res?.ejercicio?.id;
+      if (crearEjercicioAttachActividadId && newEjercicioId) {
+        try {
+          const all = await actividadService.listarActividades(claseId);
+          const current = (all.actividades || []).find((x: any) => x.id === crearEjercicioAttachActividadId);
+          const prevIds = (current?.ejercicios || []).map((e: any) => e.id);
+          await actividadService.editarActividad(claseId, crearEjercicioAttachActividadId, { ejercicioIds: [...prevIds, newEjercicioId] });
+          // close and reload
+          setOpenCrearEjercicioModal(false);
+          setCrearEjercicioAttachActividadId(null);
+          await loadActividades();
+          return;
+        } catch (err) {
+          // fallback: ignore and continue
+          console.error('Error attaching ejercicio', err);
+        }
+      }
+      // fallback behavior: close and refresh list
+      setOpenCrearEjercicioModal(false);
+      await loadActividades();
+    } catch (err: any) {
+      setCrearEjercicioError(err.response?.data?.message || 'Error al crear ejercicio');
+    } finally {
+      setCrearEjercicioLoading(false);
+    }
+  };
   const [editingActividadId, setEditingActividadId] = useState<string | null>(null);
 
   const isoToDatetimeLocal = (iso?: string) => {
@@ -450,7 +495,7 @@ export default function DetalleClasePage() {
         <Paper>
           <Tabs
             value={tabValue}
-            onChange={(e, newValue) => setTabValue(newValue)}
+            onChange={(e: React.SyntheticEvent, newValue: number) => setTabValue(newValue)}
             sx={{ borderBottom: 1, borderColor: 'divider' }}
           >
             <Tab 
@@ -547,7 +592,7 @@ export default function DetalleClasePage() {
                         {clase.isProfesor && (
                           <IconButton 
                             size="small" 
-                            onClick={(e) => handleMenuOpen(e, anuncio)}
+                            onClick={(e: React.MouseEvent<HTMLElement>) => handleMenuOpen(e, anuncio)}
                             sx={{
                               color: '#8B4513',
                               flexShrink: 0,
@@ -706,32 +751,22 @@ export default function DetalleClasePage() {
           ) : (
             <List>
               {actividades.map((a) => (
-                <ListItem key={a.id} sx={{ borderBottom: '1px solid #eee', ...(a.is_visible ? {} : { backgroundColor: 'rgba(255,152,0,0.06)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }) }}>
-                  <ListItemText
-                    primary={a.nombre}
-                    secondary={a.descripcion}
-                    sx={!a.is_visible ? { color: 'warning.main' } : {}}
-                  />
+                <ListItem key={a.id} disablePadding sx={{ borderBottom: '1px solid #eee', ...(a.is_visible ? {} : { backgroundColor: 'rgba(255,152,0,0.06)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }) }}>
+                  <ListItemButton onClick={() => router.push(`/actividades/${claseId}/ver/${a.id}`)} sx={{ cursor: 'pointer' }}>
+                    <ListItemText
+                      primary={a.nombre}
+                      secondary={a.descripcion}
+                      sx={!a.is_visible ? { color: 'warning.main' } : {}}
+                    />
                   <Box sx={{ ml: 2, textAlign: 'right' }}>
                     {a.tipo === 'evaluacion' && (
                       <Chip label="Evaluación" size="small" sx={{ mr: 1 }} />
                     )}
                     {!a.is_visible && <Chip label="Oculta" color="warning" size="small" sx={{ ml: 1 }} />}
-                    <Button size="small" onClick={async () => {
-                      // Open Ver modal inline to avoid a 404 redirect
-                      try {
-                        // Load activity details from service
-                        const res = await actividadService.listarActividades(claseId);
-                        const actividad = (res.actividades || []).find((x: any) => x.id === a.id);
-                        setVerActividad(actividad || null);
-                        setOpenVerActividad(true);
-                      } catch (err) {
-                        // Fallback to navigate if fetching fails
-                        router.push(`/actividades/${claseId}/ver/${a.id}`);
-                      }
-                    }}>Ver</Button>
+                    {/* 'Ver' is redundante porque la actividad es clickeable con ListItemButton */}
                     {clase.isProfesor && (
-                      <Button size="small" onClick={async () => {
+                      <IconButton size="small" aria-label="edit-activity" onClick={async (e: React.MouseEvent<HTMLElement>) => {
+                        e.stopPropagation(); // prevent navigating when action inside the item
                         // Open in edit mode
                         const res = await actividadService.listarActividades(claseId);
                         const actividad = (res.actividades || []).find((x: any) => x.id === a.id);
@@ -751,22 +786,27 @@ export default function DetalleClasePage() {
                         });
                         setEditingActividadId(actividad.id);
                         setOpenCrearActividadDialog(true);
-                      }} sx={{ ml: 1 }}>Editar</Button>
+                      }} sx={{ ml: 1 }}>
+                        <Edit />
+                      </IconButton>
                     )}
                     {clase.isProfesor && (
-                      <Button size="small" onClick={async () => {
-                        try {
-                          await actividadService.editarActividad(claseId, a.id, { isVisible: !a.is_visible });
-                          await loadActividades();
-                        } catch (err: any) {
-                          alert(err.response?.data?.message || 'Error toggling visibility');
-                        }
-                      }} sx={{ ml: 1 }}>{a.is_visible ? 'Ocultar' : 'Mostrar'}</Button>
+                      <IconButton size="small" aria-label="agregar-ejercicio" onClick={(e: React.MouseEvent<HTMLElement>) => { e.stopPropagation(); setCrearEjercicioAttachActividadId(a.id); setOpenCrearEjercicioModal(true); }} sx={{ ml: 1 }}>
+                        <Add />
+                      </IconButton>
                     )}
                     {clase.isProfesor && (
-                      <Button size="small" onClick={() => { setDeleteTargetId(a.id); setOpenDeleteDialog(true); }} sx={{ ml: 1 }} color="error">Eliminar</Button>
+                      <IconButton size="small" aria-label="toggle-visibility" onClick={async (e: React.MouseEvent<HTMLElement>) => { e.stopPropagation(); try { await actividadService.editarActividad(claseId, a.id, { isVisible: !a.is_visible }); await loadActividades(); } catch (err: any) { alert(err.response?.data?.message || 'Error toggling visibility'); } }} sx={{ ml: 1 }}>
+                        {a.is_visible ? <Visibility /> : <VisibilityOff />}
+                      </IconButton>
+                    )}
+                    {clase.isProfesor && (
+                      <IconButton size="small" aria-label="delete-activity" onClick={(e: React.MouseEvent<HTMLElement>) => { e.stopPropagation(); setDeleteTargetId(a.id); setOpenDeleteDialog(true); }} sx={{ ml: 1 }} color="error">
+                        <Delete />
+                      </IconButton>
                     )}
                   </Box>
+                </ListItemButton>
                 </ListItem>
               ))}
             </List>
@@ -777,18 +817,18 @@ export default function DetalleClasePage() {
         <Dialog open={openCrearActividadDialog} onClose={() => setOpenCrearActividadDialog(false)} fullWidth>
             <DialogTitle>{editingActividadId ? 'Editar Actividad' : 'Crear Actividad'}</DialogTitle>
             <DialogContent sx={{ pt: 2 }}>
-              <TextField fullWidth label="Nombre" value={crearForm.nombre} onChange={(e) => setCrearForm({...crearForm, nombre: e.target.value})} sx={{ mb: 2, mt: 1 }} InputProps={{ sx: { paddingTop: '10px' } }} />
-            <TextField fullWidth label="Descripción" multiline rows={4} value={crearForm.descripcion} onChange={(e) => setCrearForm({...crearForm, descripcion: e.target.value})} sx={{ mb: 2 }} />
+              <TextField fullWidth label="Nombre" value={crearForm.nombre} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setCrearForm({...crearForm, nombre: e.target.value})} sx={{ mb: 2, mt: 1 }} InputProps={{ sx: { paddingTop: '10px' } }} />
+            <TextField fullWidth label="Descripción" multiline rows={4} value={crearForm.descripcion} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setCrearForm({...crearForm, descripcion: e.target.value})} sx={{ mb: 2 }} />
 
-            <TextField select fullWidth label="Tipo" value={crearForm.tipo} onChange={(e) => setCrearForm({...crearForm, tipo: e.target.value as any})} sx={{ mb: 2 }}>
+            <TextField select fullWidth label="Tipo" value={crearForm.tipo} onChange={(e: any) => setCrearForm({...crearForm, tipo: e.target.value as any})} sx={{ mb: 2 }}>
               <MenuItem value="practica">Práctica</MenuItem>
               <MenuItem value="evaluacion">Evaluación</MenuItem>
             </TextField>
 
             {crearForm.tipo === 'evaluacion' && (
               <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                <TextField type="datetime-local" label="Fecha Inicio" InputLabelProps={{ shrink: true }} value={crearForm.fechaInicio} onChange={(e) => setCrearForm({...crearForm, fechaInicio: e.target.value})} />
-                <TextField type="datetime-local" label="Fecha Fin" InputLabelProps={{ shrink: true }} value={crearForm.fechaFin} onChange={(e) => setCrearForm({...crearForm, fechaFin: e.target.value})} />
+                <TextField type="datetime-local" label="Fecha Inicio" InputLabelProps={{ shrink: true }} value={crearForm.fechaInicio} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCrearForm({...crearForm, fechaInicio: e.target.value})} />
+                <TextField type="datetime-local" label="Fecha Fin" InputLabelProps={{ shrink: true }} value={crearForm.fechaFin} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCrearForm({...crearForm, fechaFin: e.target.value})} />
               </Box>
             )}
 
@@ -798,24 +838,81 @@ export default function DetalleClasePage() {
                 labelId="ejercicios-label"
                 multiple
                 value={crearForm.ejercicioIds}
-                onChange={(e: any) => setCrearForm({...crearForm, ejercicioIds: e.target.value as string[]})}
+                onChange={(e: SelectChangeEvent<string[]>) => setCrearForm({...crearForm, ejercicioIds: e.target.value as string[]})}
                 renderValue={(selected: any) => (selected as string[]).map(id => {
                   const found = ejercicios.find(x => x.id === id);
                   return found ? (found.metadata?.title || found.titulo || found.enunciado || id) : id;
                 }).join(', ')}
                 sx={{ '& .MuiSelect-select': { display: 'flex', alignItems: 'center', paddingTop: 2 } }}
-                MenuProps={{ PaperProps: { sx: { '& .MuiMenuItem-root': { alignItems: 'center', py: 1 } } } }}
+                MenuProps={{ disablePortal: true, PaperProps: { sx: { '& .MuiMenuItem-root': { alignItems: 'center', py: 1 } } } }}
               >
                 {ejercicios.map((ej) => (
-                  <MenuItem key={ej.id} value={ej.id}>{ej.metadata?.title || ej.titulo || ej.enunciado || ej.id}</MenuItem>
+                  <MenuItem key={ej.id} value={ej.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <span>{ej.metadata?.title || ej.titulo || ej.enunciado || ej.id}</span>
+                      {ej.belongsToHiddenActivity && (
+                        <Chip label="Oculta" color="warning" size="small" sx={{ ml: 1 }} aria-label="Ejercicio pertenece a actividad oculta" />
+                      )}
+                    </Box>
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <Button startIcon={<Add />} size="small" onClick={() => alert('HU Ejercicios pendiente — Implementación separada')}>Agregar ejercicio</Button>
-              <Typography variant="caption" color="text.secondary">(Pendiente: funcionalidad de HU ejercicios)</Typography>
-            </Box>
+            {!editingActividadId && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <Button startIcon={<Add />} size="small" onClick={() => setCrearForm({...crearForm, nuevosEjercicios: [...crearForm.nuevosEjercicios, { tipo: 'abierta', titulo: '', enunciado: '', puntos: 1, opciones: [], metadata: '' }]})}>Agregar ejercicio</Button>
+              </Box>
+            )}
+              <Typography variant="caption" color="text.secondary">Agrega uno o varios ejercicios y se asociarán a la actividad</Typography>
+
+            {!editingActividadId && crearForm.nuevosEjercicios.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                {crearForm.nuevosEjercicios.map((ne, idx) => (
+                  <Box key={idx} sx={{ border: '1px dashed #DDD', p: 2, mb: 2 }}>
+                    <Box sx={{ display: 'flex', gap: 2, mb: 1, alignItems: 'center' }}>
+                      <TextField fullWidth label={`Título del ejercicio #${idx + 1}`} value={ne.titulo || ''} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setCrearForm({...crearForm, nuevosEjercicios: crearForm.nuevosEjercicios.map((x, i) => i === idx ? { ...x, titulo: e.target.value } : x) })} />
+                      <Button color="error" onClick={() => setCrearForm({...crearForm, nuevosEjercicios: crearForm.nuevosEjercicios.filter((_, i) => i !== idx)})}>Eliminar</Button>
+                    </Box>
+                    <TextField fullWidth label="Enunciado" multiline rows={3} value={ne.enunciado || ''} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setCrearForm({...crearForm, nuevosEjercicios: crearForm.nuevosEjercicios.map((x,i) => i===idx?{...x, enunciado: e.target.value}:x) })} sx={{ mb: 1 }} />
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                      <TextField type="number" label="Puntos" value={ne.puntos ?? 1} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCrearForm({...crearForm, nuevosEjercicios: crearForm.nuevosEjercicios.map((x,i) => i===idx?{...x, puntos: Number(e.target.value) || 1}:x) })} sx={{ width: 120 }} />
+                      <FormControl fullWidth>
+                        <InputLabel id={`tipo-ej-${idx}`}>Tipo de ejercicio</InputLabel>
+                        <Select labelId={`tipo-ej-${idx}`} value={ne.tipo || 'abierta'} label="Tipo de ejercicio" onChange={(e: SelectChangeEvent<string>) => setCrearForm({...crearForm, nuevosEjercicios: crearForm.nuevosEjercicios.map((x,i) => i===idx?{...x, tipo: e.target.value as any}:x) })} MenuProps={{ disablePortal: true }}>
+                          <MenuItem value="abierta">Abierta</MenuItem>
+                          <MenuItem value="multiple-choice">Multiple Choice</MenuItem>
+                          <MenuItem value="verdadero-falso">Verdadero/Falso</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+
+                    {ne.tipo === 'multiple-choice' && (
+                      <OptionsEditor opciones={ne.opciones || []} onChange={(opts) => setCrearForm({...crearForm, nuevosEjercicios: crearForm.nuevosEjercicios.map((x,i) => i === idx ? {...x, opciones: opts} : x) })} />
+                    )}
+
+                    {ne.tipo === 'verdadero-falso' && (
+                      <RadioGroup
+                        value={(ne.opciones || []).findIndex((o:any) => o.is_correcta) === 0 ? 'verdadero' : 'falso'}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          const isTrue = e.target.value === 'verdadero';
+                          const nextOpts = [
+                            { texto: 'Verdadero', is_correcta: isTrue },
+                            { texto: 'Falso', is_correcta: !isTrue },
+                          ];
+                          setCrearForm({ ...crearForm, nuevosEjercicios: crearForm.nuevosEjercicios.map((x,i) => i === idx ? { ...x, opciones: nextOpts } : x ) });
+                        }}
+                      >
+                        <FormControlLabel value="verdadero" control={<Radio />} label="Verdadero" />
+                        <FormControlLabel value="falso" control={<Radio />} label="Falso" />
+                      </RadioGroup>
+                    )}
+
+                    <TextField fullWidth label="Metadata (JSON opcional)" value={typeof ne.metadata === 'object' ? JSON.stringify(ne.metadata) : (ne.metadata || '')} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setCrearForm({...crearForm, nuevosEjercicios: crearForm.nuevosEjercicios.map((x,i) => i===idx?{...x, metadata: e.target.value}:x) })} multiline rows={3} />
+                  </Box>
+                ))}
+              </Box>
+            )}
           </DialogContent>
           <DialogActions>
             <Button onClick={() => setOpenCrearActividadDialog(false)}>Cancelar</Button>
@@ -835,8 +932,49 @@ export default function DetalleClasePage() {
                   return;
                 }
 
+                // Normalize and validate nuevosEjercicios if provided (quick-add)
+                if (payload.nuevosEjercicios && payload.nuevosEjercicios.length > 0) {
+                  payload.nuevosEjercicios = payload.nuevosEjercicios.map((e: any) => {
+                    const copy: any = { ...e };
+                    if (typeof copy.metadata === 'string' && copy.metadata.trim()) {
+                      try { copy.metadata = JSON.parse(copy.metadata); } catch (err) { /* keep string */ }
+                    }
+                    copy.puntos = Number(copy.puntos) || 1;
+                    return copy;
+                  });
+                }
+
+                // Validate MCQ options
+                if (payload.nuevosEjercicios && payload.nuevosEjercicios.length > 0) {
+                  for (const e of payload.nuevosEjercicios) {
+                    if (e.tipo === 'multiple-choice') {
+                      const opciones = e.opciones || [];
+                      if (opciones.length < 2) {
+                        alert('Multiple-choice requiere al menos 2 opciones');
+                        return;
+                      }
+                      if (!opciones.some((o: any) => o.is_correcta)) {
+                        alert('Multiple-choice requiere al menos una opción marcada como correcta');
+                        return;
+                      }
+                    }
+                    if (e.tipo === 'verdadero-falso') {
+                      const opts = e.opciones || [];
+                      if (opts.length !== 2 || !opts.some((o:any) => o.is_correcta) || opts.filter((o:any) => o.is_correcta).length !== 1) {
+                        alert('Verdadero/Falso requiere 2 opciones y exactamente una marcada como correcta');
+                        return;
+                      }
+                    }
+                  }
+                }
+                // DEBUG: log payload for quick-add integration issues
+                // Remove or guard with env when done
+                // eslint-disable-next-line no-console
+                console.debug('CrearActividad payload.nuevosEjercicios:', payload.nuevosEjercicios);
+
                 if (editingActividadId) {
-                  // Update DTO doesn't accept `tipo` or `nuevosEjercicios` — filter them out.
+                  // Update DTO doesn't accept `tipo`, but it DOES accept `nuevosEjercicios` —
+                  // allow quick-add from the edit flow by passing it through.
                   const allowedKeys = ['nombre', 'descripcion', 'fechaInicio', 'fechaFin', 'isVisible', 'ejercicioIds'];
                   const updatePayload: any = {};
                   for (const k of allowedKeys) {
@@ -1015,7 +1153,7 @@ export default function DetalleClasePage() {
                 fullWidth
                 label="Título"
                 value={anuncioFormData.titulo}
-                onChange={(e) => setAnuncioFormData({ ...anuncioFormData, titulo: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setAnuncioFormData({ ...anuncioFormData, titulo: e.target.value })}
                 required
                 autoFocus
                 disabled={submittingAnuncio}
@@ -1028,7 +1166,7 @@ export default function DetalleClasePage() {
                 fullWidth
                 label="Descripción"
                 value={anuncioFormData.descripcion}
-                onChange={(e) => setAnuncioFormData({ ...anuncioFormData, descripcion: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setAnuncioFormData({ ...anuncioFormData, descripcion: e.target.value })}
                 required
                 multiline
                 rows={6}
@@ -1052,6 +1190,20 @@ export default function DetalleClasePage() {
               </Button>
             </DialogActions>
           </form>
+        </Dialog>
+
+        {/* Dialog para crear ejercicio rápido */}
+        <Dialog open={openCrearEjercicioModal} onClose={() => { setOpenCrearEjercicioModal(false); setCrearEjercicioAttachActividadId(null); }} fullWidth maxWidth="md">
+          <DialogTitle>Crear ejercicio</DialogTitle>
+          <DialogContent>
+            <EjercicioForm
+              onSubmit={handleCrearEjercicioSubmit}
+              submitButtonText="Crear y agregar"
+              loading={crearEjercicioLoading}
+              error={crearEjercicioError}
+              onCancel={() => { setOpenCrearEjercicioModal(false); setCrearEjercicioAttachActividadId(null); }}
+            />
+          </DialogContent>
         </Dialog>
 
         {/* Menú contextual para anuncios */}
