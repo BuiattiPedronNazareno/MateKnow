@@ -4,6 +4,7 @@ import { AuthModule } from './auth/auth.module';
 import { ClaseModule } from './clase/clase.module';
 import { UsuarioModule } from './usuario/usuario.module';
 import { AnuncioModule } from './anuncio/anuncio.module';
+import { EjercicioModule } from './ejercicio/ejercicio.module'; 
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AnuncioModule } from './anuncio/anuncio.module';
     ClaseModule,
     UsuarioModule,
     AnuncioModule,
+    EjercicioModule,
   ],
   controllers: [],
   providers: [],
