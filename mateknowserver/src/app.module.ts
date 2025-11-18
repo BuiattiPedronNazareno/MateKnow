@@ -6,7 +6,8 @@ import { UsuarioModule } from './usuario/usuario.module';
 import { ActividadModule } from './actividad/actividad.module';
 import { EvaluacionModule } from './evaluacion/evaluacion.module';
 import { AnuncioModule } from './anuncio/anuncio.module';
-import { EjercicioModule } from './ejercicio/ejercicio.module'; 
+import { EjercicioModule } from './ejercicio/ejercicio.module';
+import { VersusModule } from './versus/versus.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EjercicioModule } from './ejercicio/ejercicio.module';
     EvaluacionModule,
     AnuncioModule,
     EjercicioModule,
+    VersusModule,
   ],
   controllers: [],
   providers: [],

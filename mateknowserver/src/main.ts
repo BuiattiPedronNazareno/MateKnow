@@ -7,9 +7,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-  origin: 'http://localhost:3000', // URL de tu frontend
-  credentials: true,
-});
+    origin: 'http://localhost:3000', // Tu frontend Next.js
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+  });
 
   // Configuración correcta del ValidationPipe
   app.useGlobalPipes(
@@ -26,6 +28,7 @@ async function bootstrap() {
   const PORT = process.env.PORT || 4000;
   await app.listen(PORT);
   
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Backend corriendo en: http://localhost:${PORT}`);
+  console.log(`🔌 WebSocket Versus en: ws://localhost:${PORT}/versus`);
 }
 bootstrap();
