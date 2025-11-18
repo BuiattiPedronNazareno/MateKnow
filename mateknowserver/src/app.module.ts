@@ -6,11 +6,12 @@ import { UsuarioModule } from './usuario/usuario.module';
 import { ActividadModule } from './actividad/actividad.module';
 import { EvaluacionModule } from './evaluacion/evaluacion.module';
 import { AnuncioModule } from './anuncio/anuncio.module';
+import { EjercicioModule } from './ejercicio/ejercicio.module'; 
 
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true, 
+      isGlobal: true,
       envFilePath: '.env',
     }),
     AuthModule,
@@ -21,6 +22,7 @@ import { AnuncioModule } from './anuncio/anuncio.module';
     // Módulo de evaluaciones (intentos, respuestas, historial)
     EvaluacionModule,
     AnuncioModule,
+    EjercicioModule,
   ],
   controllers: [],
   providers: [],
