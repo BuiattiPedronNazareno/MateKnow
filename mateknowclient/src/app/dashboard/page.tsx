@@ -300,6 +300,7 @@ export default function DashboardPage() {
                     </Box>
                   </CardContent>
                   <CardActions>
+                    {/* Actividades and Crear Actividad removed from the main dashboard to reduce clutter. Use the class page to manage activities. */}
                     <Button
                       size="small"
                       fullWidth
@@ -322,6 +323,9 @@ export default function DashboardPage() {
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
           <MenuItem onClick={() => selectedClase && handleVerClase(selectedClase.id)}>
             <Person sx={{ mr: 1 }} /> Ver Detalles
+          </MenuItem>
+          <MenuItem onClick={() => selectedClase && router.push(`/actividades/${selectedClase.id}`)}>
+            <School sx={{ mr: 1 }} /> Ver Actividades
           </MenuItem>
           {selectedClase?.isProfesor && (
             <MenuItem onClick={() => router.push(`/clases/${selectedClase.id}/editar`)}>
