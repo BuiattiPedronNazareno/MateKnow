@@ -9,26 +9,24 @@ const api = axios.create({
   },
 });
 
-api.interceptors.request.use(
-  (config) => {
-    if (typeof window !== 'undefined') {
-      const token = localStorage.getItem('access_token');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('access_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  return config;
+});
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      console.error('ejercicioService - Error 401:', error.response.data);
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -54,7 +52,7 @@ export interface Ejercicio {
   isVersus: boolean;
   tipo: TipoEjercicio;
   opciones: Opcion[];
-  creadoAt?: string;
+  creadoAt: string;
 }
 
 export interface CreateEjercicioData {
@@ -73,36 +71,28 @@ export interface UpdateEjercicioData {
 }
 
 export const ejercicioService = {
-  async createEjercicio(data: CreateEjercicioData): Promise<any> {
+  async crearEjercicio(data: CreateEjercicioData): Promise<{ message: string; ejercicio: Ejercicio }> {
     const response = await api.post('/', data);
     return response.data;
   },
 
-
-  async getMisEjercicios(): Promise<{ ejercicios: Ejercicio[] }> {
+  async obtenerMisEjercicios(): Promise<{ ejercicios: Ejercicio[] }> {
     const response = await api.get('/');
     return response.data;
   },
 
-  async getTiposEjercicio(): Promise<{ tipos: TipoEjercicio[] }> {
-    const response = await api.get('/tipos');
-    return response.data;
-  },
-  
-  async getEjercicioById(id: string): Promise<{ ejercicio: Ejercicio }> {
+  async obtenerEjercicioPorId(id: string): Promise<{ ejercicio: Ejercicio }> {
     const response = await api.get(`/${id}`);
     return response.data;
   },
 
-  async updateEjercicio(id: string, data: UpdateEjercicioData): Promise<any> {
+  async actualizarEjercicio(id: string, data: UpdateEjercicioData): Promise<{ message: string }> {
     const response = await api.put(`/${id}`, data);
     return response.data;
   },
 
-  async deleteEjercicio(id: string, deleteActividades: boolean = false): Promise<any> {
-    const response = await api.delete(`/${id}`, {
-      params: { deleteActividades: deleteActividades.toString() },
-    });
+  async obtenerTiposEjercicio(): Promise<{ tipos: TipoEjercicio[] }> {
+    const response = await api.get('/tipos');
     return response.data;
   },
 };
