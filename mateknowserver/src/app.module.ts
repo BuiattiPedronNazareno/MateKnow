@@ -5,6 +5,7 @@ import { ClaseModule } from './clase/clase.module';
 import { UsuarioModule } from './usuario/usuario.module';
 import { ActividadModule } from './actividad/actividad.module';
 import { EvaluacionModule } from './evaluacion/evaluacion.module';
+import { AnuncioModule } from './anuncio/anuncio.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { EvaluacionModule } from './evaluacion/evaluacion.module';
     ActividadModule,
     // Módulo de evaluaciones (intentos, respuestas, historial)
     EvaluacionModule,
+    AnuncioModule,
   ],
   controllers: [],
   providers: [],
