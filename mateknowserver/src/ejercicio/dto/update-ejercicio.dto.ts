@@ -1,30 +1,37 @@
 import {
-  IsNotEmpty,
   IsString,
+  IsNotEmpty,
+  IsUUID,
+  IsOptional,
   IsNumber,
   IsBoolean,
-  IsArray,
-  IsOptional,
   ValidateNested,
-  ArrayMinSize,
+  IsArray,
   Min,
-} from '@nestjs/class-validator';
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
-import { Type } from '@nestjs/class-transformer';
-
-class OpcionDto {
+class UpdateOpcionDto {
   @IsString({ message: 'El texto de la opción debe ser una cadena' })
-  @IsNotEmpty({ message: 'El texto de la opción es obligatorio' })
-  texto: string;
+  @IsNotEmpty({ message: 'El texto de la opción no puede estar vacío' })
+  @IsOptional()
+  texto?: string;
 
   @IsBoolean({ message: 'isCorrecta debe ser un booleano' })
-  isCorrecta: boolean;
+  @IsOptional()
+  isCorrecta?: boolean;
 }
 
 export class UpdateEjercicioDto {
-  @IsString({ message: 'El enunciado debe ser una cadena de texto' })
+  @IsString({ message: 'El enunciado debe ser una cadena' })
   @IsOptional()
   enunciado?: string;
+
+  @IsUUID('4', {
+    message: 'El ID del tipo de ejercicio debe ser un UUID válido',
+  })
+  @IsOptional()
+  tipoId?: string;
 
   @IsNumber({}, { message: 'Los puntos deben ser un número' })
   @Min(0, { message: 'Los puntos no pueden ser negativos' })
@@ -37,8 +44,7 @@ export class UpdateEjercicioDto {
 
   @IsArray({ message: 'Las opciones deben ser un array' })
   @ValidateNested({ each: true })
-  @Type(() => OpcionDto)
-  @ArrayMinSize(2, { message: 'Debe haber al menos 2 opciones' })
+  @Type(() => UpdateOpcionDto)
   @IsOptional()
-  opciones?: OpcionDto[];
+  opciones?: UpdateOpcionDto[];
 }
