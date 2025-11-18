@@ -41,6 +41,8 @@ export default function ActividadesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [openDialog, setOpenDialog] = useState(false);
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [form, setForm] = useState({
     nombre: '',
     descripcion: '',
@@ -164,19 +166,23 @@ export default function ActividadesPage() {
         for (const k of allowedKeys) {
           if ((payload as any)[k] !== undefined) updatePayload[k] = (payload as any)[k];
         }
+        // Close the dialog immediately to avoid blocking UI while waiting the API
+        setOpenDialog(false);
         await actividadService.editarActividad(claseId, editingActividadId, updatePayload as any);
       } else {
+        // Close the dialog immediately so user sees response quickly
+        setOpenDialog(false);
         await actividadService.crearActividad(claseId, payload as any);
       }
-      setOpenDialog(false);
+      // already closed right before API call
       await loadAll();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Error al crear actividad');
     }
   };
 
-  const handleEliminar = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar la actividad junto a los registros de los usuarios alumnos?')) return;
+  const handleEliminar = async (id: string | null) => {
+    if (!id) return;
     try {
       await actividadService.eliminarActividad(claseId, id);
       await loadAll();
@@ -215,7 +221,7 @@ export default function ActividadesPage() {
                   <IconButton edge="end" onClick={() => openEdit(a)} sx={{ mr: 1 }}>
                     <Edit />
                   </IconButton>
-                  <IconButton edge="end" onClick={() => handleEliminar(a.id)}>
+                  <IconButton edge="end" onClick={() => { setDeleteTargetId(a.id); setOpenDeleteDialog(true); }}>
                     <Delete />
                   </IconButton>
                 </>
@@ -233,11 +239,11 @@ export default function ActividadesPage() {
         {/* Dialog Crear */}
         <Dialog open={openDialog} onClose={() => setOpenDialog(false)} fullWidth>
           <DialogTitle>Crear Actividad</DialogTitle>
-          <DialogContent>
-            <TextField fullWidth label="Nombre" value={form.nombre} onChange={(e) => setForm({...form, nombre: e.target.value})} sx={{ mb: 2 }} />
+            <DialogContent sx={{ pt: 2 }}>
+            <TextField fullWidth label="Nombre" value={form.nombre} onChange={(e) => setForm({...form, nombre: e.target.value})} sx={{ mb: 2, mt: 1 }} InputProps={{ sx: { paddingTop: '10px' } }} />
             <TextField fullWidth label="Descripción" multiline rows={4} value={form.descripcion} onChange={(e) => setForm({...form, descripcion: e.target.value})} sx={{ mb: 2 }} />
 
-            <FormControl fullWidth sx={{ mb: 2 }}>
+            <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
               <InputLabel id="tipo-label">Tipo</InputLabel>
               <Select labelId="tipo-label" value={form.tipo} label="Tipo" onChange={(e) => setForm({...form, tipo: e.target.value as any})}>
                 <MenuItem value="practica">Práctica</MenuItem>
@@ -254,12 +260,20 @@ export default function ActividadesPage() {
 
             <FormControlLabel control={<Switch checked={form.isVisible} onChange={(e) => setForm({...form, isVisible: e.target.checked})} />} label="Visible para alumnos" sx={{ mb: 2 }} />
 
-            <FormControl fullWidth sx={{ mb: 2 }}>
+            <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
               <InputLabel id="ejercicios-label">Ejercicios (seleccionar)</InputLabel>
-              <Select labelId="ejercicios-label" multiple value={form.ejercicioIds} onChange={(e) => setForm({...form, ejercicioIds: e.target.value as string[]})} renderValue={(selected) => (selected as string[]).map(id => {
+              <Select
+                labelId="ejercicios-label"
+                multiple
+                value={form.ejercicioIds}
+                onChange={(e) => setForm({...form, ejercicioIds: e.target.value as string[]})}
+                renderValue={(selected) => (selected as string[]).map(id => {
                 const found = ejercicios.find(x => x.id === id);
                 return found ? (found.metadata?.title || found.titulo || found.enunciado || id) : id;
-              }).join(', ')}>
+              }).join(', ')}
+                sx={{ '& .MuiSelect-select': { display: 'flex', alignItems: 'center', paddingTop: 2 } }}
+                MenuProps={{ PaperProps: { sx: { '& .MuiMenuItem-root': { alignItems: 'center', py: 1 } } } }}
+              >
                 {ejercicios.map((ej) => (
                   <MenuItem key={ej.id} value={ej.id}>{ej.metadata?.title || ej.titulo || ej.enunciado || ej.id}</MenuItem>
                 ))}
@@ -296,6 +310,27 @@ export default function ActividadesPage() {
           <DialogActions>
             <Button onClick={() => setOpenDialog(false)}>Cancelar</Button>
             <Button variant="contained" onClick={handleSubmit} sx={{ background: 'linear-gradient(135deg, #8B4513 0%, #D2691E 100%)' }}>{editingActividadId ? 'Guardar' : 'Crear'}</Button>
+          </DialogActions>
+        </Dialog>
+        <Dialog open={openDeleteDialog} onClose={() => { setOpenDeleteDialog(false); setDeleteTargetId(null); }} maxWidth="xs" fullWidth>
+          <DialogTitle>Confirmar eliminación</DialogTitle>
+          <DialogContent>
+            <Typography>¿Estás seguro de eliminar la actividad y los registros relacionados? Esta acción no se puede deshacer.</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => { setOpenDeleteDialog(false); setDeleteTargetId(null); }}>Cancelar</Button>
+              <Button color="error" variant="contained" onClick={async () => {
+                // Close the dialog immediately so the UI feels responsive
+                const idToDelete = deleteTargetId;
+                setOpenDeleteDialog(false);
+                setDeleteTargetId(null);
+                if (!idToDelete) return;
+                try {
+                  await handleEliminar(idToDelete);
+                } catch (err) {
+                  // Error is set in handleEliminar
+                }
+              }}>Eliminar</Button>
           </DialogActions>
         </Dialog>
 

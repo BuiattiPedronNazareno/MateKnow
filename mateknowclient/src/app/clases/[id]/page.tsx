@@ -9,11 +9,9 @@ import {
   Typography,
   Card,
   CardContent,
-  Button,
   IconButton,
   Chip,
   List,
-  MenuItem,
   ListItem,
   ListItemText,
   ListItemAvatar,
@@ -22,6 +20,7 @@ import {
   Tab,
   Alert,
   CircularProgress,
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -32,6 +31,7 @@ import {
   Select,
   SelectChangeEvent,
   Menu,
+  MenuItem,
 } from '@mui/material';
 
 import {
@@ -82,6 +82,10 @@ export default function DetalleClasePage() {
   const [openPromoteDialog, setOpenPromoteDialog] = useState(false);
   const [openMatricularDialog, setOpenMatricularDialog] = useState(false);
   const [openCrearActividadDialog, setOpenCrearActividadDialog] = useState(false);
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [openSalirDialog, setOpenSalirDialog] = useState(false);
+  const [openDeleteAnuncioDialog, setOpenDeleteAnuncioDialog] = useState(false);
   const [crearForm, setCrearForm] = useState({
     nombre: '',
     descripcion: '',
@@ -226,9 +230,9 @@ export default function DetalleClasePage() {
   };
 
   const handleSalirClase = async () => {
-    if (!window.confirm('¿Estás seguro de que quieres salir de esta clase?')) {
-      return;
-    }
+    // kept for direct call if needed; prefer opening the non-blocking dialog
+    setOpenSalirDialog(true);
+    return;
     
     try {
       await claseService.salirDeClase(claseId);
@@ -298,20 +302,9 @@ export default function DetalleClasePage() {
 
   const handleDeleteAnuncio = async () => {
     if (!selectedAnuncio) return;
-
-    if (!window.confirm('¿Estás seguro de que quieres eliminar este anuncio?')) {
-      handleMenuClose();
-      return;
-    }
-
-    try {
-      await anuncioService.deleteAnuncio(selectedAnuncio.id);
-      await loadAnuncios();
-      handleMenuClose();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Error al eliminar anuncio');
-      handleMenuClose();
-    }
+    // Open the modal confirm instead of native confirm
+    setOpenDeleteAnuncioDialog(true);
+    handleMenuClose();
   };
 
   const formatDate = (dateString: string) => {
@@ -771,15 +764,7 @@ export default function DetalleClasePage() {
                       }} sx={{ ml: 1 }}>{a.is_visible ? 'Ocultar' : 'Mostrar'}</Button>
                     )}
                     {clase.isProfesor && (
-                      <Button size="small" onClick={async () => {
-                        if (!confirm('¿Estás seguro de eliminar la actividad junto a los registros de los usuarios alumnos?')) return;
-                        try {
-                          await actividadService.eliminarActividad(claseId, a.id);
-                          await loadActividades();
-                        } catch (err: any) {
-                          alert(err.response?.data?.message || 'Error al eliminar actividad');
-                        }
-                      }} sx={{ ml: 1 }} color="error">Eliminar</Button>
+                      <Button size="small" onClick={() => { setDeleteTargetId(a.id); setOpenDeleteDialog(true); }} sx={{ ml: 1 }} color="error">Eliminar</Button>
                     )}
                   </Box>
                 </ListItem>
@@ -791,8 +776,8 @@ export default function DetalleClasePage() {
         {/* Dialog Crear Actividad (en línea) */}
         <Dialog open={openCrearActividadDialog} onClose={() => setOpenCrearActividadDialog(false)} fullWidth>
             <DialogTitle>{editingActividadId ? 'Editar Actividad' : 'Crear Actividad'}</DialogTitle>
-          <DialogContent>
-            <TextField fullWidth label="Nombre" value={crearForm.nombre} onChange={(e) => setCrearForm({...crearForm, nombre: e.target.value})} sx={{ mb: 2 }} />
+            <DialogContent sx={{ pt: 2 }}>
+              <TextField fullWidth label="Nombre" value={crearForm.nombre} onChange={(e) => setCrearForm({...crearForm, nombre: e.target.value})} sx={{ mb: 2, mt: 1 }} InputProps={{ sx: { paddingTop: '10px' } }} />
             <TextField fullWidth label="Descripción" multiline rows={4} value={crearForm.descripcion} onChange={(e) => setCrearForm({...crearForm, descripcion: e.target.value})} sx={{ mb: 2 }} />
 
             <TextField select fullWidth label="Tipo" value={crearForm.tipo} onChange={(e) => setCrearForm({...crearForm, tipo: e.target.value as any})} sx={{ mb: 2 }}>
@@ -807,7 +792,7 @@ export default function DetalleClasePage() {
               </Box>
             )}
 
-            <FormControl fullWidth sx={{ mb: 2 }}>
+            <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
               <InputLabel id="ejercicios-label">Ejercicios (seleccionar)</InputLabel>
               <Select
                 labelId="ejercicios-label"
@@ -818,6 +803,8 @@ export default function DetalleClasePage() {
                   const found = ejercicios.find(x => x.id === id);
                   return found ? (found.metadata?.title || found.titulo || found.enunciado || id) : id;
                 }).join(', ')}
+                sx={{ '& .MuiSelect-select': { display: 'flex', alignItems: 'center', paddingTop: 2 } }}
+                MenuProps={{ PaperProps: { sx: { '& .MuiMenuItem-root': { alignItems: 'center', py: 1 } } } }}
               >
                 {ejercicios.map((ej) => (
                   <MenuItem key={ej.id} value={ej.id}>{ej.metadata?.title || ej.titulo || ej.enunciado || ej.id}</MenuItem>
@@ -855,11 +842,14 @@ export default function DetalleClasePage() {
                   for (const k of allowedKeys) {
                     if ((payload as any)[k] !== undefined) updatePayload[k] = (payload as any)[k];
                   }
+                  // Close dialog immediately to be responsive
+                  setOpenCrearActividadDialog(false);
                   await actividadService.editarActividad(claseId, editingActividadId, updatePayload);
                 } else {
+                  setOpenCrearActividadDialog(false);
                   await actividadService.crearActividad(claseId, payload);
                 }
-                setOpenCrearActividadDialog(false);
+                // already closed above
                 await loadActividades();
                 resetCrearForm();
                 setEditingActividadId(null);
@@ -868,6 +858,29 @@ export default function DetalleClasePage() {
                 alert(err.response?.data?.message || 'Error al crear actividad');
               }
             }} sx={{ background: 'linear-gradient(135deg, #8B4513 0%, #D2691E 100%)', color: 'white' }}>{editingActividadId ? 'Guardar' : 'Crear'}</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Mini modal para confirmar eliminación de actividad */}
+        <Dialog open={openDeleteDialog} onClose={() => { setOpenDeleteDialog(false); setDeleteTargetId(null); }} maxWidth="xs" fullWidth>
+          <DialogTitle>Confirmar eliminación</DialogTitle>
+          <DialogContent>
+            <Typography>¿Deseas eliminar esta actividad y sus registros? Esta acción no se puede deshacer.</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => { setOpenDeleteDialog(false); setDeleteTargetId(null); }}>Cancelar</Button>
+            <Button color="error" variant="contained" onClick={async () => {
+              const idToDelete = deleteTargetId;
+              setOpenDeleteDialog(false);
+              setDeleteTargetId(null);
+              if (!idToDelete) return;
+              try {
+                await actividadService.eliminarActividad(claseId, idToDelete);
+                await loadActividades();
+              } catch (err: any) {
+                setError(err.response?.data?.message || 'Error al eliminar actividad');
+              }
+            }}>Eliminar</Button>
           </DialogActions>
         </Dialog>
 
@@ -941,6 +954,49 @@ export default function DetalleClasePage() {
           onMatricular={handleMatricularAlumno}
           claseId={claseId}
         />
+
+        {/* Dialog para confirmar salir de clase */}
+        <Dialog open={openSalirDialog} onClose={() => setOpenSalirDialog(false)}>
+          <DialogTitle>Salir de Clase</DialogTitle>
+          <DialogContent>
+            <Typography>¿Estás seguro de que quieres salir de esta clase? Perderás acceso como alumno.</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenSalirDialog(false)}>Cancelar</Button>
+            <Button color="error" variant="contained" onClick={async () => {
+              try {
+                await claseService.salirDeClase(claseId);
+                router.push('/dashboard');
+              } catch (err: any) {
+                setError(err.response?.data?.message || 'Error al salir de la clase');
+              } finally {
+                setOpenSalirDialog(false);
+              }
+            }}>Salir</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Dialog para confirmar eliminación de anuncio */}
+        <Dialog open={openDeleteAnuncioDialog} onClose={() => setOpenDeleteAnuncioDialog(false)}>
+          <DialogTitle>Eliminar anuncio</DialogTitle>
+          <DialogContent>
+            <Typography>¿Deseas eliminar este anuncio? Esta acción no se puede deshacer.</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenDeleteAnuncioDialog(false)}>Cancelar</Button>
+            <Button color="error" variant="contained" onClick={async () => {
+              const current = selectedAnuncio;
+              setOpenDeleteAnuncioDialog(false);
+              if (!current) return;
+              try {
+                await anuncioService.deleteAnuncio(current.id);
+                await loadAnuncios();
+              } catch (err: any) {
+                setError(err.response?.data?.message || 'Error al eliminar anuncio');
+              }
+            }}>Eliminar</Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Dialog para crear/editar anuncio */}
         <Dialog 
