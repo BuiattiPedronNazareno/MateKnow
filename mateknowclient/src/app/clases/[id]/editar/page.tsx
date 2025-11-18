@@ -263,17 +263,22 @@ export default function EditarClasePage() {
         >
           <DialogTitle>Eliminar Clase</DialogTitle>
           <DialogContent>
-            <DialogContentText>
-              ¿Estás seguro de que quieres eliminar esta clase?
-              <br />
-              <br />
-              <strong>Esta acción no se puede deshacer.</strong> Se eliminarán:
-              <ul>
+            <Box>
+              <Typography variant="body1" gutterBottom>
+                ¿Estás seguro de que quieres eliminar esta clase?
+              </Typography>
+              <Typography variant="body1" sx={{ fontWeight: 600, mt: 2, mb: 1 }}>
+                Esta acción no se puede deshacer.
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Se eliminarán:
+              </Typography>
+              <Box component="ul" sx={{ mt: 0, pl: 3 }}>
                 <li>Todas las actividades de la clase</li>
                 <li>Los registros de los alumnos</li>
                 <li>Los ejercicios asociados</li>
-              </ul>
-            </DialogContentText>
+              </Box>
+            </Box>
           </DialogContent>
           <DialogActions>
             <Button

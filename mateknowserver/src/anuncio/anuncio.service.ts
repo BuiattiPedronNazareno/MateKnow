@@ -33,14 +33,13 @@ export class AnuncioService {
         .from('anuncio')
         .insert({
           clase_id: claseId,
-          autor_id: userId,
+          usuario_id: userId,
           titulo: createAnuncioDto.titulo,
           descripcion: createAnuncioDto.descripcion,
-          fecha_publicacion: new Date().toISOString(),
         })
         .select(`
           *,
-          autor:autor_id (
+          autor:usuario_id ( 
             id,
             nombre,
             apellido,
@@ -90,7 +89,7 @@ export class AnuncioService {
         .from('anuncio')
         .select(`
           *,
-          autor:autor_id (
+          autor:usuario_id ( 
             id,
             nombre,
             apellido,
@@ -98,7 +97,7 @@ export class AnuncioService {
           )
         `)
         .eq('clase_id', claseId)
-        .order('fecha_publicacion', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) {
         throw new BadRequestException('Error al obtener anuncios');
@@ -130,12 +129,17 @@ export class AnuncioService {
       // Obtener el anuncio para verificar permisos
       const { data: anuncio, error: anuncioError } = await supabase
         .from('anuncio')
-        .select('clase_id, autor_id')
+        .select('clase_id, usuario_id')
         .eq('id', anuncioId)
         .single();
 
       if (anuncioError || !anuncio) {
         throw new NotFoundException('Anuncio no encontrado');
+      }
+
+      // Verificar que el usuario es el autor del anuncio
+      if (anuncio.usuario_id !== userId) {
+        throw new ForbiddenException('Solo el autor puede editar este anuncio');
       }
 
       // CA6: Verificar que es profesor de la clase
@@ -147,12 +151,11 @@ export class AnuncioService {
         .update({
           ...(updateAnuncioDto.titulo && { titulo: updateAnuncioDto.titulo }),
           ...(updateAnuncioDto.descripcion && { descripcion: updateAnuncioDto.descripcion }),
-          updated_at: new Date().toISOString(),
         })
         .eq('id', anuncioId)
         .select(`
           *,
-          autor:autor_id (
+          autor:usuario_id (
             id,
             nombre,
             apellido,
@@ -191,12 +194,17 @@ export class AnuncioService {
       // Obtener el anuncio para verificar permisos
       const { data: anuncio, error: anuncioError } = await supabase
         .from('anuncio')
-        .select('clase_id, autor_id')
+        .select('clase_id, usuario_id')
         .eq('id', anuncioId)
         .single();
 
       if (anuncioError || !anuncio) {
         throw new NotFoundException('Anuncio no encontrado');
+      }
+
+      // Verificar que el usuario es el autor del anuncio
+      if (anuncio.usuario_id !== userId) {
+        throw new ForbiddenException('Solo el autor puede eliminar este anuncio');
       }
 
       // CA6: Verificar que es profesor de la clase
@@ -238,7 +246,7 @@ export class AnuncioService {
         .from('anuncio')
         .select(`
           *,
-          autor:autor_id (
+          autor:usuario_id (
             id,
             nombre,
             apellido,
@@ -303,7 +311,7 @@ export class AnuncioService {
       id: anuncio.id,
       titulo: anuncio.titulo,
       descripcion: anuncio.descripcion,
-      fechaPublicacion: anuncio.fecha_publicacion,
+      fechaPublicacion: anuncio.created_at,
       autor: {
         id: anuncio.autor.id,
         nombre: anuncio.autor.nombre,
@@ -311,7 +319,7 @@ export class AnuncioService {
         email: anuncio.autor.email,
       },
       createdAt: anuncio.created_at,
-      updatedAt: anuncio.updated_at,
+      updatedAt: anuncio.updated_at || anuncio.created_at,
     };
   }
 }
