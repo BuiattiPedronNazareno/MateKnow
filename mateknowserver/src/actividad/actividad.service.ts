@@ -1,10 +1,11 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { SupabaseService } from '../lib/supabase.service';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { UpdateActividadDto } from './dto/update-actividad.dto';
 
 @Injectable()
 export class ActividadService {
+  private readonly logger = new Logger(ActividadService.name);
   constructor(private supabaseService: SupabaseService) {}
 
   private async verificarEsProfesor(claseId: string, userId: string, accessToken?: string) {
@@ -64,6 +65,8 @@ export class ActividadService {
       // Crear ejercicios nuevos si vienen
       const createdEjercicioIds: string[] = [];
       if (dto.nuevosEjercicios && dto.nuevosEjercicios.length > 0) {
+        // Use logger to record nuevosEjercicios payload at debug level (non-blocking and configurable)
+        this.logger.debug(`nuevosEjercicios payload: ${JSON.stringify(dto.nuevosEjercicios)}`);
         for (const e of dto.nuevosEjercicios) {
           const metadataObj: any = {};
           try {
@@ -73,7 +76,27 @@ export class ActividadService {
             if ((e as any).metadata && typeof (e as any).metadata === 'object') Object.assign(metadataObj, (e as any).metadata);
           }
           if ((e as any).titulo) metadataObj.title = (e as any).titulo;
+          // Determine tipo_id from provided e.tipo if any
+          let tipoIdForEjercicio: string | null = null;
+          if ((e as any).tipo) {
+            const keyCandidate = (e as any).tipo as string;
+            // Map common frontend type strings to DB keys
+            const keysToTry = [keyCandidate];
+            if (keyCandidate === 'verdadero-falso') keysToTry.push('true_false');
+            if (keyCandidate === 'multiple-choice') keysToTry.push('choice', 'multiple_choice');
+            if (keyCandidate === 'abierta') keysToTry.push('abierta');
+            const { data: tipoRows } = await supabase
+              .from('tipo_ejercicio')
+              .select('id')
+              .in('key', keysToTry)
+              .limit(1);
+            if (tipoRows && tipoRows.length > 0) {
+              tipoIdForEjercicio = tipoRows[0].id;
+            }
+          }
+
           const payload: any = { enunciado: (e as any).enunciado || (e as any).titulo || '', puntos: (e as any).puntos ?? 1, metadata: Object.keys(metadataObj).length ? metadataObj : null, creado_por: userId };
+          if (tipoIdForEjercicio) payload.tipo_id = tipoIdForEjercicio;
           const { data: ej, error: ejError } = await supabase.from('ejercicio').insert(payload).select().single();
           if (ejError) {
             throw new BadRequestException('Error al crear ejercicio: ' + ejError.message);
@@ -173,15 +196,37 @@ export class ActividadService {
       throw new BadRequestException('Error al obtener actividades: ' + msg);
     }
 
-    // Para cada actividad obtener ejercicios asociados
+    // Para cada actividad obtener ejercicios asociados y sus opciones
     const actividadConEjercicios: any[] = [];
     for (const a of actividades) {
       const { data: ae } = await supabase
         .from('actividad_ejercicio')
         .select('ejercicio:ejercicio_id (id, enunciado, puntos, metadata, creado_por, creado_at)')
         .eq('actividad_id', a.id);
+      const ejercicios = (ae || []).map((r: any) => r.ejercicio);
 
-      actividadConEjercicios.push({ ...a, ejercicios: ae?.map((r: any) => r.ejercicio) || [] });
+      // Obtener opciones de todos los ejercicios de esta actividad en un solo query
+      const ejercicioIds = ejercicios.map((ej: any) => ej.id);
+      let opcionesPorEjercicio: Record<string, any[]> = {};
+      if (ejercicioIds.length > 0) {
+        const { data: opciones, error: optErr } = await supabase
+          .from('opcion_ejercicio')
+          .select('*')
+          .in('ejercicio_id', ejercicioIds as any[]);
+
+        if (optErr) throw new BadRequestException('Error al obtener opciones: ' + (optErr?.message || ''));
+
+        opcionesPorEjercicio = {};
+        (opciones || []).forEach((o: any) => {
+          opcionesPorEjercicio[o.ejercicio_id] = opcionesPorEjercicio[o.ejercicio_id] || [];
+          opcionesPorEjercicio[o.ejercicio_id].push(o);
+        });
+      }
+
+      // Anexar opciones a cada ejercicio
+      const ejerciciosConOpciones = ejercicios.map((ej: any) => ({ ...ej, opciones: opcionesPorEjercicio[ej.id] || [] }));
+
+      actividadConEjercicios.push({ ...a, ejercicios: ejerciciosConOpciones });
     }
 
     return { actividades: actividadConEjercicios };
@@ -238,6 +283,47 @@ export class ActividadService {
       }
 
       // Si vienen ejercicioIds, reemplazar asociaciones
+      // Also accept nuevosEjercicios on update: create new exercises and associate them
+      const createdEjercicioIds: string[] = [];
+      if (dto.nuevosEjercicios && dto.nuevosEjercicios.length > 0) {
+        for (const e of dto.nuevosEjercicios) {
+          const metadataObj: any = {};
+          try {
+            if ((e as any).metadata) Object.assign(metadataObj, JSON.parse((e as any).metadata));
+          } catch (err) {
+            if ((e as any).metadata && typeof (e as any).metadata === 'object') Object.assign(metadataObj, (e as any).metadata);
+          }
+          if ((e as any).titulo) metadataObj.title = (e as any).titulo;
+          // Map frontend 'tipo' string to tipo_ejercicio id if possible
+          let tipoIdForEjercicio: string | null = null;
+          if ((e as any).tipo) {
+            const keyCandidate = (e as any).tipo as string;
+            const keysToTry = [keyCandidate];
+            if (keyCandidate === 'verdadero-falso') keysToTry.push('true_false');
+            if (keyCandidate === 'multiple-choice') keysToTry.push('choice', 'multiple_choice');
+            if (keyCandidate === 'abierta') keysToTry.push('abierta');
+            const { data: tipoRows } = await supabase
+              .from('tipo_ejercicio')
+              .select('id')
+              .in('key', keysToTry)
+              .limit(1);
+            if (tipoRows && tipoRows.length > 0) {
+              tipoIdForEjercicio = tipoRows[0].id;
+            }
+          }
+
+          const payload: any = { enunciado: (e as any).enunciado || (e as any).titulo || '', puntos: (e as any).puntos ?? 1, metadata: Object.keys(metadataObj).length ? metadataObj : null, creado_por: userId };
+          if (tipoIdForEjercicio) payload.tipo_id = tipoIdForEjercicio;
+          const { data: ej, error: ejError } = await supabase.from('ejercicio').insert(payload).select().single();
+          if (ejError) throw new BadRequestException('Error al crear ejercicio: ' + ejError.message);
+          createdEjercicioIds.push(ej.id);
+          if ((e as any).opciones && Array.isArray((e as any).opciones) && (e as any).opciones.length > 0) {
+            const opcionesRows = (e as any).opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: !!o.is_correcta }));
+            const { error: optError } = await supabase.from('opcion_ejercicio').insert(opcionesRows);
+            if (optError) throw new BadRequestException('Error al crear opciones de ejercicio: ' + optError.message);
+          }
+        }
+      }
       if (dto.ejercicioIds && Array.isArray(dto.ejercicioIds)) {
         // validar que pertenecen a la misma clase
         const { data: inscritos } = await supabase.from('inscripcion').select('usuario_id').eq('clase_id', claseId);
@@ -266,10 +352,17 @@ export class ActividadService {
         if (delError) throw new BadRequestException('Error al eliminar relaciones previas: ' + delError.message);
 
         if (dto.ejercicioIds.length > 0) {
-          const rows = dto.ejercicioIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
+          const allIds = [...dto.ejercicioIds, ...createdEjercicioIds];
+          const rows = allIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
           const { error: insertError } = await supabase.from('actividad_ejercicio').insert(rows);
           if (insertError) throw new BadRequestException('Error al asociar ejercicios: ' + insertError.message);
         }
+      }
+      // If only nuevosEjercicios were provided without replacing ejercicioIds, append created ones
+      if ((!dto.ejercicioIds || dto.ejercicioIds.length === 0) && createdEjercicioIds.length > 0) {
+        const rows = createdEjercicioIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
+        const { error: insertError } = await supabase.from('actividad_ejercicio').insert(rows);
+        if (insertError) throw new BadRequestException('Error al asociar ejercicios nuevos: ' + insertError.message);
       }
 
       const { data: actividad, error } = await supabase.from('actividad').select('*').eq('id', actividadId).single();
@@ -352,7 +445,27 @@ export class ActividadService {
 
       if (optErr) throw new BadRequestException('Error al obtener opciones: ' + (optErr?.message || ''));
 
-      ejerciciosConOpciones.push({ ...ej, opciones: opciones || [] });
+      // Determine if the exercise belongs to any hidden activity of this class
+      const { data: aeHidden, error: aeHiddenErr } = await supabase
+        .from('actividad_ejercicio')
+        .select('actividad:actividad_id (clase_id, is_visible)')
+        .eq('ejercicio_id', ej.id);
+
+      let belongsToHiddenActivity = false;
+      if (!aeHiddenErr && aeHidden && aeHidden.length > 0) {
+        for (const r of aeHidden) {
+          // Supabase can return nested relations either as an object or an array in some cases
+          // Normalize to an object to avoid TypeScript errors and handle both shapes
+          const nestedActividad: any = (r as any).actividad;
+          const actObj = Array.isArray(nestedActividad) ? nestedActividad[0] : nestedActividad;
+          if (actObj && actObj.clase_id === claseId && actObj.is_visible === false) {
+            belongsToHiddenActivity = true;
+            break;
+          }
+        }
+      }
+
+      ejerciciosConOpciones.push({ ...ej, opciones: opciones || [], belongsToHiddenActivity });
     }
 
     return { ejercicios: ejerciciosConOpciones };
