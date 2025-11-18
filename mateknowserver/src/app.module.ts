@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { ClaseModule } from './clase/clase.module';
 import { UsuarioModule } from './usuario/usuario.module';
+import { AnuncioModule } from './anuncio/anuncio.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { UsuarioModule } from './usuario/usuario.module';
     AuthModule,
     ClaseModule,
     UsuarioModule,
+    AnuncioModule,
   ],
   controllers: [],
   providers: [],
