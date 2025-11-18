@@ -95,4 +95,24 @@ export const ejercicioService = {
     const response = await api.get('/tipos');
     return response.data;
   },
+
+  async crearTipoEjercicio(data: { key: string; nombre: string; descripcion?: string }): Promise<{ message: string; tipo: TipoEjercicio }> {
+    const response = await api.post('/tipos', data);
+    return response.data;
+  },
+
+  async actualizarTipoEjercicio(id: string, data: { nombre?: string; descripcion?: string }): Promise<{ message: string }> {
+    const response = await api.put(`/tipos/${id}`, data);
+    return response.data;
+  },
+
+  async eliminarTipoEjercicio(id: string): Promise<{ message: string }> {
+    const response = await api.delete(`/tipos/${id}`);
+    return response.data;
+  },
+
+  async eliminarEjercicio(id: string, deleteActividades = false): Promise<{ message: string; actividadesEliminadas?: number }> {
+    const response = await api.delete(`/${id}`, { params: { deleteActividades } });
+    return response.data;
+  },
 };
