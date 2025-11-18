@@ -1,20 +1,20 @@
 import {
-  IsString,
   IsNotEmpty,
-  IsUUID,
-  IsOptional,
+  IsString,
   IsNumber,
   IsBoolean,
+  IsArray,
+  IsUUID,
+  IsOptional,
   ValidateNested,
   ArrayMinSize,
-  IsArray,
   Min,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-class CreateOpcionEjercicioDto {
-  @IsString({ message: 'El texto de la opción debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El texto de la opción no puede estar vacío' })
+class OpcionDto {
+  @IsString({ message: 'El texto de la opción debe ser una cadena' })
+  @IsNotEmpty({ message: 'El texto de la opción es obligatorio' })
   texto: string;
 
   @IsBoolean({ message: 'isCorrecta debe ser un booleano' })
@@ -22,30 +22,26 @@ class CreateOpcionEjercicioDto {
 }
 
 export class CreateEjercicioDto {
-  @IsString({ message: 'El enunciado debe ser una cadena de texto' })
-  @IsNotEmpty({ message: 'El enunciado no puede estar vacío' })
-  enunciado: string;
-
-  @IsUUID('4', {
-    message: 'El ID del tipo de ejercicio debe ser un UUID válido',
-  })
-  @IsNotEmpty({
-    message: 'El ID del tipo de ejercicio es obligatorio',
-  })
+  @IsUUID('4', { message: 'El tipoId debe ser un UUID válido' })
+  @IsNotEmpty({ message: 'El tipo de ejercicio es obligatorio' })
   tipoId: string;
+
+  @IsString({ message: 'El enunciado debe ser una cadena de texto' })
+  @IsNotEmpty({ message: 'El enunciado es obligatorio' })
+  enunciado: string;
 
   @IsNumber({}, { message: 'Los puntos deben ser un número' })
   @Min(0, { message: 'Los puntos no pueden ser negativos' })
   @IsOptional()
-  puntos?: number = 1;
+  puntos?: number;
 
   @IsBoolean({ message: 'isVersus debe ser un booleano' })
   @IsOptional()
-  isVersus?: boolean = false;
+  isVersus?: boolean;
 
-  @ValidateNested({ each: true })
-  @Type(() => CreateOpcionEjercicioDto)
-  @ArrayMinSize(1, { message: 'Debe haber al menos una opción de respuesta' })
   @IsArray({ message: 'Las opciones deben ser un array' })
-  opciones: CreateOpcionEjercicioDto[];
+  @ValidateNested({ each: true })
+  @Type(() => OpcionDto)
+  @ArrayMinSize(2, { message: 'Debe haber al menos 2 opciones' })
+  opciones: OpcionDto[];
 }

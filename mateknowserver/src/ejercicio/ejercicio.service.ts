@@ -31,13 +31,22 @@ export class EjercicioService {
         throw new NotFoundException('Tipo de ejercicio no encontrado');
       }
 
-      const opcionesCorrectas = createEjercicioDto.opciones.filter(o => o.isCorrecta);
+      const opcionesCorrectas = createEjercicioDto.opciones.filter(
+        (o) => o.isCorrecta,
+      );
       if (opcionesCorrectas.length === 0) {
-        throw new BadRequestException('Debe haber al menos una opción correcta');
+        throw new BadRequestException(
+          'Debe haber al menos una opción correcta',
+        );
       }
 
-      if (tipoEjercicio.key === 'true_false' && createEjercicioDto.opciones.length !== 2) {
-        throw new BadRequestException('Verdadero o Falso debe tener exactamente 2 opciones');
+      if (
+        tipoEjercicio.key === 'true_false' &&
+        createEjercicioDto.opciones.length !== 2
+      ) {
+        throw new BadRequestException(
+          'Verdadero o Falso debe tener exactamente 2 opciones',
+        );
       }
 
       const { data: ejercicio, error: ejercicioError } = await supabase
@@ -54,12 +63,15 @@ export class EjercicioService {
         .select()
         .single();
 
-      if (ejercicioError) {
-        throw new BadRequestException('Error al crear ejercicio: ' + ejercicioError.message);
+      if (ejercicioError || !ejercicio) {
+        throw new BadRequestException(
+          'Error al crear ejercicio: ' + (ejercicioError?.message || ''),
+        );
       }
 
+      const ejercicioId = ejercicio.id as string;
       const opcionesData = createEjercicioDto.opciones.map((opcion) => ({
-        ejercicio_id: ejercicio.id,
+        ejercicio_id: ejercicioId,
         texto: opcion.texto,
         is_correcta: opcion.isCorrecta,
       }));
@@ -69,32 +81,34 @@ export class EjercicioService {
         .insert(opcionesData)
         .select();
 
-      if (opcionesError) {
-        await supabase.from('ejercicio').delete().eq('id', ejercicio.id);
-        throw new BadRequestException('Error al crear opciones: ' + opcionesError.message);
+      if (opcionesError || !opciones) {
+        await supabase.from('ejercicio').delete().eq('id', ejercicioId);
+        throw new BadRequestException(
+          'Error al crear opciones: ' + (opcionesError?.message || ''),
+        );
       }
 
       return {
         message: 'Ejercicio creado exitosamente',
         ejercicio: {
-          id: ejercicio.id,
-          tipoId: ejercicio.tipo_id,
-          enunciado: ejercicio.enunciado,
-          puntos: ejercicio.puntos,
-          isVersus: ejercicio.metadata?.is_versus || false,
-          opciones: opciones.map(o => ({
-            id: o.id,
-            texto: o.texto,
-            isCorrecta: o.is_correcta,
+          id: ejercicioId,
+          tipoId: ejercicio.tipo_id as string,
+          enunciado: ejercicio.enunciado as string,
+          puntos: ejercicio.puntos as number,
+          isVersus: (ejercicio.metadata as { is_versus?: boolean })?.is_versus || false,
+          opciones: opciones.map((o) => ({
+            id: o.id as string,
+            texto: o.texto as string,
+            isCorrecta: o.is_correcta as boolean,
           })),
         },
       };
-    } catch (error) {
+    } catch (err) {
       if (
-        error instanceof NotFoundException ||
-        error instanceof BadRequestException
+        err instanceof NotFoundException ||
+        err instanceof BadRequestException
       ) {
-        throw error;
+        throw err;
       }
       throw new InternalServerErrorException('Error al crear ejercicio');
     }
@@ -106,7 +120,8 @@ export class EjercicioService {
     try {
       const { data: ejercicios, error } = await supabase
         .from('ejercicio')
-        .select(`
+        .select(
+          `
           id,
           enunciado,
           puntos,
@@ -122,7 +137,8 @@ export class EjercicioService {
             texto,
             is_correcta
           )
-        `)
+        `,
+        )
         .eq('creado_por', userId)
         .order('creado_at', { ascending: false });
 
@@ -131,21 +147,21 @@ export class EjercicioService {
       }
 
       return {
-        ejercicios: ejercicios.map((ej: any) => ({
-          id: ej.id,
-          enunciado: ej.enunciado,
-          puntos: ej.puntos,
-          isVersus: ej.metadata?.is_versus || false,
+        ejercicios: (ejercicios || []).map((ej) => ({
+          id: ej.id as string,
+          enunciado: ej.enunciado as string,
+          puntos: ej.puntos as number,
+          isVersus: (ej.metadata as { is_versus?: boolean })?.is_versus || false,
           tipo: ej.tipo_ejercicio,
-          opciones: ej.opciones.map((op: any) => ({
-            id: op.id,
-            texto: op.texto,
-            isCorrecta: op.is_correcta,
+          opciones: ((ej.opciones as unknown[]) || []).map((op: any) => ({
+            id: op.id as string,
+            texto: op.texto as string,
+            isCorrecta: op.is_correcta as boolean,
           })),
-          creadoAt: ej.creado_at,
+          creadoAt: ej.creado_at as string,
         })),
       };
-    } catch (error) {
+    } catch {
       throw new InternalServerErrorException('Error al obtener ejercicios');
     }
   }
@@ -156,7 +172,8 @@ export class EjercicioService {
     try {
       const { data: ejercicio, error } = await supabase
         .from('ejercicio')
-        .select(`
+        .select(
+          `
           id,
           enunciado,
           puntos,
@@ -173,7 +190,8 @@ export class EjercicioService {
             texto,
             is_correcta
           )
-        `)
+        `,
+        )
         .eq('id', id)
         .single();
 
@@ -181,31 +199,36 @@ export class EjercicioService {
         throw new NotFoundException('Ejercicio no encontrado');
       }
 
-      if (ejercicio.creado_por !== userId) {
-        throw new ForbiddenException('No tienes permiso para ver este ejercicio');
+      const creadoPor = ejercicio.creado_por as string;
+      if (creadoPor !== userId) {
+        throw new ForbiddenException(
+          'No tienes permiso para ver este ejercicio',
+        );
       }
 
       return {
         ejercicio: {
-          id: ejercicio.id,
-          enunciado: ejercicio.enunciado,
-          puntos: ejercicio.puntos,
-          isVersus: ejercicio.metadata?.is_versus || false,
+          id: ejercicio.id as string,
+          enunciado: ejercicio.enunciado as string,
+          puntos: ejercicio.puntos as number,
+          isVersus:
+            (ejercicio.metadata as { is_versus?: boolean })?.is_versus || false,
           tipo: ejercicio.tipo_ejercicio,
-          opciones: ejercicio.opciones.map((op: any) => ({
-            id: op.id,
-            texto: op.texto,
-            isCorrecta: op.is_correcta,
+          opciones: ((ejercicio.opciones as unknown[]) || []).map(
+            (op: any) => ({
+            id: op.id as string,
+            texto: op.texto as string,
+            isCorrecta: op.is_correcta as boolean,
           })),
-          creadoAt: ejercicio.creado_at,
+          creadoAt: ejercicio.creado_at as string,
         },
       };
-    } catch (error) {
+    } catch (err) {
       if (
-        error instanceof NotFoundException ||
-        error instanceof ForbiddenException
+        err instanceof NotFoundException ||
+        err instanceof ForbiddenException
       ) {
-        throw error;
+        throw err;
       }
       throw new InternalServerErrorException('Error al obtener ejercicio');
     }
@@ -230,13 +253,18 @@ export class EjercicioService {
         throw new NotFoundException('Ejercicio no encontrado');
       }
 
-      if (ejercicioExistente.creado_por !== userId) {
-        throw new ForbiddenException('No tienes permiso para editar este ejercicio');
+      const creadoPor = ejercicioExistente.creado_por as string;
+      if (creadoPor !== userId) {
+        throw new ForbiddenException(
+          'No tienes permiso para editar este ejercicio',
+        );
       }
 
-      const updateData: any = {};
-      if (updateEjercicioDto.enunciado) updateData.enunciado = updateEjercicioDto.enunciado;
-      if (updateEjercicioDto.puntos !== undefined) updateData.puntos = updateEjercicioDto.puntos;
+      const updateData: Record<string, unknown> = {};
+      if (updateEjercicioDto.enunciado)
+        updateData.enunciado = updateEjercicioDto.enunciado;
+      if (updateEjercicioDto.puntos !== undefined)
+        updateData.puntos = updateEjercicioDto.puntos;
       if (updateEjercicioDto.isVersus !== undefined) {
         updateData.metadata = { is_versus: updateEjercicioDto.isVersus };
       }
@@ -250,10 +278,17 @@ export class EjercicioService {
         throw new BadRequestException('Error al actualizar ejercicio');
       }
 
-      if (updateEjercicioDto.opciones && updateEjercicioDto.opciones.length > 0) {
-        const opcionesCorrectas = updateEjercicioDto.opciones.filter(o => o.isCorrecta);
+      if (
+        updateEjercicioDto.opciones &&
+        updateEjercicioDto.opciones.length > 0
+      ) {
+        const opcionesCorrectas = updateEjercicioDto.opciones.filter(
+          (o) => o.isCorrecta,
+        );
         if (opcionesCorrectas.length === 0) {
-          throw new BadRequestException('Debe haber al menos una opción correcta');
+          throw new BadRequestException(
+            'Debe haber al menos una opción correcta',
+          );
         }
 
         await supabase.from('opcion_ejercicio').delete().eq('ejercicio_id', id);
@@ -276,13 +311,13 @@ export class EjercicioService {
       return {
         message: 'Ejercicio actualizado exitosamente',
       };
-    } catch (error) {
+    } catch (err) {
       if (
-        error instanceof NotFoundException ||
-        error instanceof ForbiddenException ||
-        error instanceof BadRequestException
+        err instanceof NotFoundException ||
+        err instanceof ForbiddenException ||
+        err instanceof BadRequestException
       ) {
-        throw error;
+        throw err;
       }
       throw new InternalServerErrorException('Error al actualizar ejercicio');
     }
@@ -307,8 +342,11 @@ export class EjercicioService {
         throw new NotFoundException('Ejercicio no encontrado');
       }
 
-      if (ejercicio.creado_por !== userId) {
-        throw new ForbiddenException('No tienes permiso para eliminar este ejercicio');
+      const creadoPor = ejercicio.creado_por as string;
+      if (creadoPor !== userId) {
+        throw new ForbiddenException(
+          'No tienes permiso para eliminar este ejercicio',
+        );
       }
 
       const { data: actividadesConEjercicio, error: actError } = await supabase
@@ -322,14 +360,18 @@ export class EjercicioService {
 
       if (actividadesConEjercicio && actividadesConEjercicio.length > 0) {
         if (deleteActividades) {
-          const actividadIds = actividadesConEjercicio.map(a => a.actividad_id);
+          const actividadIds = actividadesConEjercicio.map(
+            (a) => a.actividad_id as string,
+          );
           const { error: deleteActError } = await supabase
             .from('actividad')
             .delete()
             .in('id', actividadIds);
 
           if (deleteActError) {
-            throw new BadRequestException('Error al eliminar actividades asociadas');
+            throw new BadRequestException(
+              'Error al eliminar actividades asociadas',
+            );
           }
         } else {
           const { error: deleteRelError } = await supabase
@@ -338,7 +380,9 @@ export class EjercicioService {
             .eq('ejercicio_id', id);
 
           if (deleteRelError) {
-            throw new BadRequestException('Error al eliminar relaciones con actividades');
+            throw new BadRequestException(
+              'Error al eliminar relaciones con actividades',
+            );
           }
         }
       }
@@ -356,15 +400,17 @@ export class EjercicioService {
         message: deleteActividades
           ? 'Ejercicio y actividades asociadas eliminadas exitosamente'
           : 'Ejercicio eliminado exitosamente',
-        actividadesEliminadas: deleteActividades ? actividadesConEjercicio?.length || 0 : 0,
+        actividadesEliminadas: deleteActividades
+          ? actividadesConEjercicio?.length || 0
+          : 0,
       };
-    } catch (error) {
+    } catch (err) {
       if (
-        error instanceof NotFoundException ||
-        error instanceof ForbiddenException ||
-        error instanceof BadRequestException
+        err instanceof NotFoundException ||
+        err instanceof ForbiddenException ||
+        err instanceof BadRequestException
       ) {
-        throw error;
+        throw err;
       }
       throw new InternalServerErrorException('Error al eliminar ejercicio');
     }
@@ -384,8 +430,10 @@ export class EjercicioService {
       }
 
       return { tipos };
-    } catch (error) {
-      throw new InternalServerErrorException('Error al obtener tipos de ejercicio');
+    } catch {
+      throw new InternalServerErrorException(
+        'Error al obtener tipos de ejercicio',
+      );
     }
   }
 }

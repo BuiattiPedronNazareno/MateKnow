@@ -1,7 +1,7 @@
 import {
   Controller,
-  Post,
   Get,
+  Post,
   Put,
   Delete,
   Body,
@@ -21,6 +21,7 @@ import { AuthGuard } from '../auth/guards/auth.guard';
 @UseGuards(AuthGuard)
 export class EjercicioController {
   constructor(private readonly ejercicioService: EjercicioService) {}
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async createEjercicio(
@@ -34,26 +35,23 @@ export class EjercicioController {
     );
   }
 
-  @Get()
-  @HttpCode(HttpStatus.OK)
-  async getMisEjercicios(@Request() req) {
-    return this.ejercicioService.getMisEjercicios(req.user.id, req.token);
-  }
-
-
   @Get('tipos')
   @HttpCode(HttpStatus.OK)
   async getTiposEjercicio(@Request() req) {
     return this.ejercicioService.getTiposEjercicio(req.token);
   }
 
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  async getMisEjercicios(@Request() req) {
+    return this.ejercicioService.getMisEjercicios(req.user.id, req.token);
+  }
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
   async getEjercicioById(@Param('id') id: string, @Request() req) {
     return this.ejercicioService.getEjercicioById(id, req.user.id, req.token);
   }
-
 
   @Put(':id')
   @HttpCode(HttpStatus.OK)

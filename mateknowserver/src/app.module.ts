@@ -9,7 +9,7 @@ import { EjercicioModule } from './ejercicio/ejercicio.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
-      isGlobal: true, 
+      isGlobal: true,
       envFilePath: '.env',
     }),
     AuthModule,
