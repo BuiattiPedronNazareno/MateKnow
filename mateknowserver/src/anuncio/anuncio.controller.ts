@@ -10,10 +10,15 @@ import {
   HttpStatus,
   UseGuards,
   Request,
+  Query,              // Importado para paginación
+  DefaultValuePipe,   // Importado para valores por defecto
+  ParseIntPipe,       // Importado para convertir string a number
 } from '@nestjs/common';
 import { AnuncioService } from './anuncio.service';
 import { CreateAnuncioDto } from './dto/create-anuncio.dto';
 import { UpdateAnuncioDto } from './dto/update-anuncio.dto';
+import { CreateComentarioDto } from './dto/create-comentario.dto';
+import { UpdateComentarioDto } from './dto/update-comentario.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
 
 @Controller('anuncios')
@@ -24,7 +29,6 @@ export class AnuncioController {
   /**
    * POST /anuncios/clase/:claseId
    * Crear un anuncio en la clase
-   * CA1: El profesor puede crear un nuevo anuncio
    */
   @Post('clase/:claseId')
   @HttpCode(HttpStatus.CREATED)
@@ -44,8 +48,6 @@ export class AnuncioController {
   /**
    * GET /anuncios/clase/:claseId
    * Obtener todos los anuncios de una clase
-   * CA4: Los alumnos visualizan los anuncios publicados
-   * CA5: Ordenados del más reciente al más antiguo
    */
   @Get('clase/:claseId')
   @HttpCode(HttpStatus.OK)
@@ -63,7 +65,6 @@ export class AnuncioController {
   /**
    * PUT /anuncios/:id
    * Actualizar un anuncio
-   * CA3: El profesor puede editar sus anuncios
    */
   @Put(':id')
   @HttpCode(HttpStatus.OK)
@@ -83,7 +84,6 @@ export class AnuncioController {
   /**
    * DELETE /anuncios/:id
    * Eliminar un anuncio
-   * CA3: El profesor puede eliminar sus anuncios
    */
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
@@ -99,5 +99,61 @@ export class AnuncioController {
   @HttpCode(HttpStatus.OK)
   async getAnuncioById(@Param('id') id: string, @Request() req) {
     return this.anuncioService.getAnuncioById(id, req.user.id, req.token);
+  }
+
+  // --- ENDPOINTS DE COMENTARIOS ---
+
+  /**
+   * POST /anuncios/:id/comentarios
+   * Crear un comentario en un anuncio
+   */
+  @Post(':id/comentarios')
+  @HttpCode(HttpStatus.CREATED)
+  async createComentario(
+    @Param('id') anuncioId: string,
+    @Body() dto: CreateComentarioDto,
+    @Request() req,
+  ) {
+    return this.anuncioService.createComentario(anuncioId, dto, req.user.id, req.token);
+  }
+
+  /**
+   * GET /anuncios/:id/comentarios
+   * Obtener comentarios de un anuncio con paginación
+   * Query params: page (default 1), limit (default 5)
+   */
+  @Get(':id/comentarios')
+  @HttpCode(HttpStatus.OK)
+  async getComentarios(
+    @Param('id') anuncioId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(5), ParseIntPipe) limit: number,
+    @Request() req,
+  ) {
+    return this.anuncioService.getComentarios(anuncioId, req.user.id, req.token, page, limit);
+  }
+
+  /**
+   * DELETE /anuncios/comentarios/:id
+   * Eliminar un comentario
+   */
+  @Delete('comentarios/:id')
+  @HttpCode(HttpStatus.OK)
+  async deleteComentario(@Param('id') comentarioId: string, @Request() req) {
+    return this.anuncioService.deleteComentario(comentarioId, req.user.id, req.token);
+  }
+
+  /**
+   * PUT /anuncios/comentarios/:id
+   * Actualizar un comentario
+   */
+  @Put('comentarios/:id')
+  @HttpCode(HttpStatus.OK)
+  async updateComentario(
+    @Param('id') comentarioId: string,
+    @Body() dto: UpdateComentarioDto,
+    @Request() req,
+  ) {
+    return this.anuncioService.updateComentario(comentarioId, dto, req.user.id, req.token);
   }
 }
