@@ -127,12 +127,20 @@ export class EvaluacionService {
       opcionesPorEjercicio[o.ejercicio_id].push(o);
     });
 
+    const detalles: any[] = [];
     for (const ejercicioId of Object.keys(respuestas)) {
       const resp = respuestas[ejercicioId];
       const opcionesEj = opcionesPorEjercicio[ejercicioId] || [];
       // si respuesta es optionId simple
       const correcta = opcionesEj.find((o: any) => o.id === resp && o.is_correcta);
       if (correcta) puntaje += 1;
+      const correctOption = opcionesEj.find((o: any) => o.is_correcta);
+      detalles.push({
+        ejercicioId,
+        givenOptionId: resp,
+        correctOptionId: correctOption ? correctOption.id : null,
+        isCorrect: !!correcta,
+      });
     }
 
     // Actualizar registro
@@ -143,7 +151,7 @@ export class EvaluacionService {
 
     if (finishErr) throw new InternalServerErrorException('Error al finalizar intento: ' + finishErr.message);
 
-    return { puntaje };
+    return { puntaje, detalles };
   }
 
   async getHistorial(claseId: string, actividadId: string, userId: string, accessToken?: string) {

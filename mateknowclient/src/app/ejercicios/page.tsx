@@ -17,11 +17,18 @@ import {
   IconButton,
   Fab,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import { 
   Add as AddIcon, 
   Edit as EditIcon, 
   Visibility as VisibilityIcon,
+  Delete as DeleteIcon,
   School
 } from '@mui/icons-material';
 import { ejercicioService, Ejercicio } from '@/app/services/ejercicioService';
@@ -31,6 +38,9 @@ export default function EjerciciosPage() {
   const [ejercicios, setEjercicios] = useState<Ejercicio[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteActividades, setDeleteActividades] = useState(false);
 
   useEffect(() => {
     const loadEjercicios = async () => {
@@ -161,6 +171,11 @@ export default function EjerciciosPage() {
                         <EditIcon />
                       </IconButton>
                     </Tooltip>
+                    <Tooltip title="Eliminar Ejercicio">
+                      <IconButton size="small" color="error" onClick={() => { setDeleteTargetId(ejercicio.id); setOpenDeleteDialog(true); }}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
                   </CardActions>
                 </Card>
               </Box>
@@ -182,6 +197,32 @@ export default function EjerciciosPage() {
             <AddIcon />
           </Fab>
         </Box>
+        <Dialog open={openDeleteDialog} onClose={() => { setOpenDeleteDialog(false); setDeleteTargetId(null); }}>
+          <DialogTitle>Eliminar ejercicio</DialogTitle>
+          <DialogContent>
+            <Typography>¿Deseas eliminar este ejercicio?</Typography>
+            <FormControlLabel
+              control={<Checkbox checked={deleteActividades} onChange={(e) => setDeleteActividades(e.target.checked)} />}
+              label="Eliminar actividades asociadas"
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => { setOpenDeleteDialog(false); setDeleteTargetId(null); }}>Cancelar</Button>
+            <Button color="error" variant="contained" onClick={async () => {
+              const id = deleteTargetId;
+              setOpenDeleteDialog(false);
+              setDeleteTargetId(null);
+              if (!id) return;
+              try {
+                await ejercicioService.eliminarEjercicio(id, deleteActividades);
+                const response = await ejercicioService.obtenerMisEjercicios();
+                setEjercicios(response.ejercicios);
+              } catch (err: any) {
+                setError(err.response?.data?.message || 'Error al eliminar ejercicio');
+              }
+            }}>Eliminar</Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Box>
   );

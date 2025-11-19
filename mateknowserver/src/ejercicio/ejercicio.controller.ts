@@ -15,6 +15,8 @@ import {
 import { EjercicioService } from './ejercicio.service';
 import { CreateEjercicioDto } from './dto/create-ejercicio.dto';
 import { UpdateEjercicioDto } from './dto/update-ejercicio.dto';
+import { CreateTipoEjercicioDto } from './dto/create-tipo-ejercicio.dto';
+import { UpdateTipoEjercicioDto } from './dto/update-tipo-ejercicio.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
 
 @Controller('ejercicios')
@@ -39,6 +41,24 @@ export class EjercicioController {
   @HttpCode(HttpStatus.OK)
   async getTiposEjercicio(@Request() req) {
     return this.ejercicioService.getTiposEjercicio(req.token);
+  }
+
+  @Post('tipos')
+  @HttpCode(HttpStatus.CREATED)
+  async createTipoEjercicio(@Body() dto: CreateTipoEjercicioDto, @Request() req) {
+    return this.ejercicioService.createTipoEjercicio(dto, req.token);
+  }
+
+  @Put('tipos/:id')
+  @HttpCode(HttpStatus.OK)
+  async updateTipoEjercicio(@Param('id') id: string, @Body() dto: UpdateTipoEjercicioDto, @Request() req) {
+    return this.ejercicioService.updateTipoEjercicio(id, dto, req.token);
+  }
+
+  @Delete('tipos/:id')
+  @HttpCode(HttpStatus.OK)
+  async deleteTipoEjercicio(@Param('id') id: string, @Request() req) {
+    return this.ejercicioService.deleteTipoEjercicio(id, req.token);
   }
 
   @Get()
