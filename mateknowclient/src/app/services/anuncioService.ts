@@ -51,6 +51,28 @@ export interface Anuncio {
   updatedAt: string;
 }
 
+export interface Comentario {
+  id: string;
+  anuncioId: string;
+  contenido: string;
+  autor: {
+    id: string;
+    nombre: string;
+    apellido: string;
+    email: string;
+  };
+  createdAt: string;
+}
+
+export interface ComentariosResponse {
+  comentarios: Comentario[];
+  meta: {
+    total: number;
+    page: number;
+    lastPage: number;
+  };
+}
+
 export interface CreateAnuncioData {
   titulo: string;
   descripcion: string;
@@ -73,7 +95,6 @@ export const anuncioService = {
     return response.data;
   },
 
-
   async getAnuncioById(anuncioId: string): Promise<{ anuncio: Anuncio }> {
     const response = await api.get(`/${anuncioId}`);
     return response.data;
@@ -86,6 +107,29 @@ export const anuncioService = {
 
   async deleteAnuncio(anuncioId: string): Promise<{ message: string }> {
     const response = await api.delete(`/${anuncioId}`);
+    return response.data;
+  },
+
+  // Métodos para comentarios
+  async getComentarios(anuncioId: string, page: number = 1, limit: number = 5): Promise<ComentariosResponse> {
+    const response = await api.get(`/${anuncioId}/comentarios`, {
+      params: { page, limit }
+    });
+    return response.data;
+  },
+
+  async createComentario(anuncioId: string, contenido: string): Promise<{ message: string; comentario: Comentario }> {
+    const response = await api.post(`/${anuncioId}/comentarios`, { contenido });
+    return response.data;
+  },
+
+  async deleteComentario(comentarioId: string): Promise<{ message: string }> {
+    const response = await api.delete(`/comentarios/${comentarioId}`);
+    return response.data;
+  },
+
+  async updateComentario(comentarioId: string, contenido: string): Promise<{ message: string; comentario: Comentario }> {
+    const response = await api.put(`/comentarios/${comentarioId}`, { contenido });
     return response.data;
   },
 };
