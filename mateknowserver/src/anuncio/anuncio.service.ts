@@ -8,6 +8,8 @@ import {
 import { SupabaseService } from '../lib/supabase.service';
 import { CreateAnuncioDto } from './dto/create-anuncio.dto';
 import { UpdateAnuncioDto } from './dto/update-anuncio.dto';
+import { CreateComentarioDto } from './dto/create-comentario.dto';
+import { UpdateComentarioDto } from './dto/update-comentario.dto';
 
 @Injectable()
 export class AnuncioService {
@@ -283,6 +285,151 @@ export class AnuncioService {
     }
   }
 
+  // --- FUNCIONALIDAD DE COMENTARIOS ---
+
+  /**
+   * CA1: Crear un nuevo comentario
+   */
+  async createComentario(
+    anuncioId: string,
+    createDto: CreateComentarioDto,
+    userId: string,
+    accessToken?: string,
+  ) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    try {
+      // Verificar acceso (esto ya verifica si el usuario está inscrito en la clase del anuncio)
+      await this.getAnuncioById(anuncioId, userId, accessToken);
+
+      const { data, error } = await supabase
+        .from('comentario')
+        .insert({
+          anuncio_id: anuncioId,
+          usuario_id: userId,
+          contenido: createDto.contenido,
+        })
+        .select(`
+          *,
+          autor:usuario_id ( id, nombre, apellido, email )
+        `)
+        .single();
+
+      if (error) throw new BadRequestException('Error al comentar: ' + error.message);
+
+      return { message: 'Comentario creado', comentario: this.formatComentario(data) };
+    } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof NotFoundException) throw error;
+      throw new InternalServerErrorException('Error al crear comentario');
+    }
+  }
+
+/**
+   * CA4 & CA5: Obtener comentarios paginados
+   */
+  async getComentarios(
+    anuncioId: string, 
+    userId: string, 
+    accessToken?: string,
+    page: number = 1,   // Nuevo argumento
+    limit: number = 5   // Nuevo argumento
+  ) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    // Verificar acceso
+    await this.getAnuncioById(anuncioId, userId, accessToken);
+
+    // Calcular rango para Supabase (0-indexed)
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    const { data, error, count } = await supabase
+      .from('comentario')
+      .select(`
+        *,
+        autor:usuario_id ( id, nombre, apellido, email )
+      `, { count: 'exact' }) // Solicitamos el conteo total
+      .eq('anuncio_id', anuncioId)
+      .order('created_at', { ascending: false })
+      .range(from, to); // Aplicamos paginación
+
+    if (error) throw new BadRequestException('Error al obtener comentarios');
+
+    return { 
+      comentarios: data.map(this.formatComentario),
+      meta: {
+        total: count,
+        page,
+        lastPage: Math.ceil((count || 0) / limit),
+      }
+    };
+  }
+
+  /**
+   * CA3 & CA6: Eliminar comentario (Solo profesor)
+   */
+  async deleteComentario(comentarioId: string, userId: string, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    // Obtener comentario y la clase asociada
+    const { data: comentario } = await supabase
+      .from('comentario')
+      .select('anuncio_id, anuncio(clase_id)')
+      .eq('id', comentarioId)
+      .single();
+
+    if (!comentario) throw new NotFoundException('Comentario no encontrado');
+
+    // CA6: Verificar que el usuario es profesor de la clase
+    const claseId = (comentario as any).anuncio.clase_id;
+    await this.verificarEsProfesor(claseId, userId, accessToken);
+
+    const { error } = await supabase.from('comentario').delete().eq('id', comentarioId);
+    if (error) throw new BadRequestException('Error al eliminar comentario');
+
+    return { message: 'Comentario eliminado' };
+  }
+
+  /**
+   * CA3: Editar comentario (Solo profesor, según requerimientos estrictos de gestión)
+   */
+  async updateComentario(
+    comentarioId: string,
+    updateDto: UpdateComentarioDto,
+    userId: string,
+    accessToken?: string,
+  ) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    const { data: comentario } = await supabase
+      .from('comentario')
+      .select('anuncio_id, anuncio(clase_id)')
+      .eq('id', comentarioId)
+      .single();
+
+    if (!comentario) throw new NotFoundException('Comentario no encontrado');
+
+    // CA6: Gestión reservada para profesores
+    const claseId = (comentario as any).anuncio.clase_id;
+    await this.verificarEsProfesor(claseId, userId, accessToken);
+
+    const { data, error } = await supabase
+      .from('comentario')
+      .update({
+        contenido: updateDto.contenido,
+        updated_at: new Date(),
+      })
+      .eq('id', comentarioId)
+      .select(`*, autor:usuario_id ( id, nombre, apellido, email )`)
+      .single();
+
+    if (error) throw new BadRequestException('Error al actualizar comentario');
+
+    return { message: 'Comentario actualizado', comentario: this.formatComentario(data) };
+  }
+
+  // --- HELPERS ---
+
   /**
    * Método auxiliar: verificar si el usuario es profesor de la clase
    */
@@ -320,6 +467,16 @@ export class AnuncioService {
       },
       createdAt: anuncio.created_at,
       updatedAt: anuncio.updated_at || anuncio.created_at,
+    };
+  }
+
+  private formatComentario(c: any) {
+    return {
+      id: c.id,
+      anuncioId: c.anuncio_id,
+      contenido: c.contenido,
+      autor: c.autor,
+      createdAt: c.created_at,
     };
   }
 }
