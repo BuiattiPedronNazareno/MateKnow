@@ -1,0 +1,29 @@
+# Root .gitignore for MateKnow
+# Common
+node_modules/
+.vscode/
+.idea/
+.DS_Store
+*.log
+
+# Ignore docs/specs and .github local additions
+.github/
+docs/
+specs/
+
+# Lockfiles: keep them out of local commits if undesired
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Next/React/Node
+/.next/
+/out/
+/dist/
+/build/
+
+# Environment files
+.env*
+
+# OS
+Thumbs.db

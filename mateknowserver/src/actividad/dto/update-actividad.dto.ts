@@ -1,5 +1,7 @@
-import { IsOptional, IsString, IsBoolean, IsISO8601, IsArray } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsISO8601, IsArray, ValidateNested } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { Type } from 'class-transformer';
+import { CreateEjercicioDto } from './create-actividad.dto';
 
 export class UpdateActividadDto {
   @IsOptional()
@@ -45,4 +47,9 @@ export class UpdateActividadDto {
   @IsOptional()
   @IsArray()
   ejercicioIds?: string[];
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => CreateEjercicioDto)
+  nuevosEjercicios?: CreateEjercicioDto[];
 }

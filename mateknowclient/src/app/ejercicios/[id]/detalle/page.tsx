@@ -16,6 +16,12 @@ import {
   IconButton,
   Button,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -24,6 +30,7 @@ import {
   RadioButtonUnchecked as RadioButtonUncheckedIcon,
   CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
+import { Delete as DeleteIcon } from '@mui/icons-material';
 import { ejercicioService, Ejercicio } from '@/app/services/ejercicioService';
 
 export default function DetalleEjercicioPage() {
@@ -33,6 +40,8 @@ export default function DetalleEjercicioPage() {
   const [ejercicio, setEjercicio] = useState<Ejercicio | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [deleteActividades, setDeleteActividades] = useState(false);
 
   useEffect(() => {
     const loadEjercicio = async () => {
@@ -105,7 +114,34 @@ export default function DetalleEjercicioPage() {
                 <EditIcon />
               </IconButton>
             </Tooltip>
+            <Tooltip title="Eliminar Ejercicio">
+              <IconButton color="error" onClick={() => setOpenDeleteDialog(true)}>
+                <DeleteIcon />
+              </IconButton>
+            </Tooltip>
           </Box>
+          <Dialog open={openDeleteDialog} onClose={() => setOpenDeleteDialog(false)}>
+            <DialogTitle>Eliminar ejercicio</DialogTitle>
+            <DialogContent>
+              <Typography>¿Deseas eliminar este ejercicio?</Typography>
+              <FormControlLabel
+                control={<Checkbox checked={deleteActividades} onChange={(e) => setDeleteActividades(e.target.checked)} />}
+                label="Eliminar actividades asociadas"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setOpenDeleteDialog(false)}>Cancelar</Button>
+              <Button color="error" variant="contained" onClick={async () => {
+                setOpenDeleteDialog(false);
+                try {
+                  await ejercicioService.eliminarEjercicio(ejercicioId, deleteActividades);
+                  router.push('/ejercicios');
+                } catch (err: any) {
+                  setError(err.response?.data?.message || 'Error al eliminar ejercicio');
+                }
+              }}>Eliminar</Button>
+            </DialogActions>
+          </Dialog>
 
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#8B4513' }}>
             {ejercicio.enunciado}

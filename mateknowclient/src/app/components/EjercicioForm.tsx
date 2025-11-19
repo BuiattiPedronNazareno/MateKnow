@@ -16,6 +16,8 @@ import {
   Typography,
   Tooltip,
   IconButton,
+  RadioGroup,
+  Radio,
 } from '@mui/material';
 import { Info as InfoIcon } from '@mui/icons-material';
 import OpcionField from './OpcionField';
@@ -63,6 +65,17 @@ export default function EjercicioForm({
           const tipo = response.tipos.find(t => t.id === initialData.tipoId);
           setTipoSeleccionado(tipo || null);
         }
+        // Set default tipo to first available type if none selected
+        if (!initialData?.tipoId && !tipoId && response.tipos && response.tipos.length > 0) {
+          setTipoId(response.tipos[0].id);
+        }
+        // If backend doesn't return tipos, keep empty and show error to user
+        if (!response.tipos || response.tipos.length === 0) {
+          setTiposEjercicio([]);
+          setTipoId('');
+          setFetchError('No hay tipos de ejercicio definidos en el servidor. Contacta al administrador.');
+          return;
+        }
       } catch (err: any) {
         setFetchError(err.response?.data?.message || 'Error al cargar tipos de ejercicio');
       }
@@ -81,7 +94,7 @@ export default function EjercicioForm({
           { texto: 'Verdadero', isCorrecta: false },
           { texto: 'Falso', isCorrecta: false }
         ]);
-      } else if (tipo?.key === 'choice' && opciones.length < 2) {
+      } else if (tipo?.key === 'multiple-choice' && opciones.length < 2) {
         setOpciones([{ texto: '', isCorrecta: false }, { texto: '', isCorrecta: false }]);
       }
     }
@@ -111,7 +124,12 @@ export default function EjercicioForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+    // Validate tipoId format (server requires UUID)
+    const isUuid = (s?: string) => !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+    if (!isUuid(tipoId)) {
+      setFetchError('El tipo seleccionado no es válido. Comprueba los tipos de ejercicio en el servidor.');
+      return;
+    }
     if (!tipoId) {
       setFetchError('Por favor selecciona un tipo de ejercicio');
       return;
@@ -170,7 +188,8 @@ export default function EjercicioForm({
               value={tipoId}
               label="Tipo de Ejercicio"
               onChange={(e) => setTipoId(e.target.value)}
-              disabled={loading || tiposEjercicio.length === 0}
+              disabled={tiposEjercicio.length === 0}
+              MenuProps={{ disablePortal: true }}
             >
               {tiposEjercicio.map((tipo) => (
                 <MenuItem key={tipo.id} value={tipo.id}>
@@ -241,17 +260,35 @@ export default function EjercicioForm({
           </Alert>
         )}
 
-        {opciones.map((opcion, index) => (
-          <OpcionField
-            key={index}
-            opcion={opcion}
-            index={index}
-            tipoEjercicio={tipoSeleccionado?.key || ''}
-            onChange={handleOpcionChange}
-            onRemove={handleRemoveOpcion}
-            showRemoveButton={opciones.length > 2 || tipoSeleccionado?.key !== 'true_false'}
-          />
-        ))}
+        {tipoSeleccionado?.key === 'true_false' ? (
+          <RadioGroup
+            value={opciones.findIndex(o => o.isCorrecta === true).toString()}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+              const idx = Number(e.target.value);
+              // set only the selected option as correct
+              setOpciones(opciones.map((o, i) => ({ ...o, isCorrecta: i === idx })));
+            }}
+          >
+            {opciones.map((opcion, index) => (
+              <Box key={index} sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, border: '1px solid #ccc', borderRadius: 2, mb: 2, bgcolor: '#fafafa' }}>
+                <FormControlLabel value={index.toString()} control={<Radio />} label="" />
+                <TextField value={opcion.texto} onChange={(ev) => handleOpcionChange(index, 'texto', ev.target.value)} fullWidth />
+              </Box>
+            ))}
+          </RadioGroup>
+        ) : (
+          opciones.map((opcion, index) => (
+            <OpcionField
+              key={index}
+              opcion={opcion}
+              index={index}
+              tipoEjercicio={tipoSeleccionado?.key || ''}
+              onChange={handleOpcionChange}
+              onRemove={handleRemoveOpcion}
+              showRemoveButton={opciones.length > 2 || tipoSeleccionado?.key !== 'true_false'}
+            />
+          ))
+        )}
         
         {tipoSeleccionado?.key !== 'true_false' && (
           <Button

@@ -8,6 +8,8 @@ import {
 import { SupabaseService } from '../lib/supabase.service';
 import { CreateEjercicioDto } from './dto/create-ejercicio.dto';
 import { UpdateEjercicioDto } from './dto/update-ejercicio.dto';
+import { CreateTipoEjercicioDto } from './dto/create-tipo-ejercicio.dto';
+import { UpdateTipoEjercicioDto } from './dto/update-tipo-ejercicio.dto';
 
 @Injectable()
 export class EjercicioService {
@@ -434,6 +436,67 @@ export class EjercicioService {
       throw new InternalServerErrorException(
         'Error al obtener tipos de ejercicio',
       );
+    }
+  }
+
+  async createTipoEjercicio(createTipoDto: CreateTipoEjercicioDto, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    try {
+      const { data, error } = await supabase
+        .from('tipo_ejercicio')
+        .insert({ key: createTipoDto.key, nombre: createTipoDto.nombre, descripcion: createTipoDto.descripcion })
+        .select()
+        .single();
+
+      if (error || !data) {
+        throw new BadRequestException('Error al crear tipo de ejercicio');
+      }
+
+      return { message: 'Tipo de ejercicio creado', tipo: data };
+    } catch (err) {
+      throw new InternalServerErrorException('Error al crear tipo de ejercicio');
+    }
+  }
+
+  async updateTipoEjercicio(id: string, updateTipoDto: UpdateTipoEjercicioDto, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    try {
+      const { data: tipoExistente, error: checkError } = await supabase
+        .from('tipo_ejercicio')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (checkError || !tipoExistente) {
+        throw new NotFoundException('Tipo de ejercicio no encontrado');
+      }
+
+      const { error } = await supabase.from('tipo_ejercicio').update(updateTipoDto).eq('id', id);
+      if (error) {
+        throw new BadRequestException('Error al actualizar tipo de ejercicio');
+      }
+
+      return { message: 'Tipo actualizado' };
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      throw new InternalServerErrorException('Error al actualizar tipo de ejercicio');
+    }
+  }
+
+  async deleteTipoEjercicio(id: string, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    try {
+      const { error } = await supabase.from('tipo_ejercicio').delete().eq('id', id);
+      if (error) {
+        throw new BadRequestException('Error al eliminar tipo de ejercicio');
+      }
+
+      return { message: 'Tipo eliminado' };
+    } catch (err) {
+      throw new InternalServerErrorException('Error al eliminar tipo de ejercicio');
     }
   }
 }

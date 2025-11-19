@@ -24,9 +24,10 @@ import {
   ListItemText,
   IconButton,
   Chip,
+  ListItemButton,
   Alert,
 } from '@mui/material';
-import { ArrowBack, Delete, Add, Edit } from '@mui/icons-material';
+import { ArrowBack, Delete, Add, Edit, Visibility, VisibilityOff } from '@mui/icons-material';
 import { actividadService } from '@/app/services/actividadService';
 import OptionsEditor from './components/OptionsEditor';
 import { Radio, RadioGroup, Stack } from '@mui/material';
@@ -155,12 +156,19 @@ export default function ActividadesPage() {
                 return;
               }
             }
+            if (e.tipo === 'verdadero-falso') {
+              const opts = e.opciones || [];
+              if (opts.length !== 2 || !opts.some((o:any) => o.is_correcta) || opts.filter((o:any) => o.is_correcta).length !== 1) {
+                setError('Verdadero/Falso requiere 2 opciones y exactamente una marcada como correcta');
+                return;
+              }
+            }
           }
         }
 
       if (editingActividadId) {
-        // The backend's UpdateActividadDto doesn't accept `tipo` or `nuevosEjercicios`.
-        // Only send allowed fields to avoid validation errors when editing.
+        // The backend's UpdateActividadDto doesn't accept `tipo`, but it DOES accept
+        // `nuevosEjercicios` — allow it here so users can quick-add new exercises while editing.
         const allowedKeys = ['nombre', 'descripcion', 'fechaInicio', 'fechaFin', 'isVisible', 'ejercicioIds'];
         const updatePayload: any = {};
         for (const k of allowedKeys) {
@@ -215,23 +223,35 @@ export default function ActividadesPage() {
         <Paper sx={{ p: 2, mb: 3 }}>
           <List>
             {actividades.length === 0 && <Typography sx={{ p: 2 }}>No hay actividades aún.</Typography>}
-            {actividades.map((a) => (
-              <ListItem key={a.id} secondaryAction={isProfesor ? (
+              {actividades.map((a) => (
+                <ListItem key={a.id} disablePadding secondaryAction={isProfesor ? (
                 <>
-                  <IconButton edge="end" onClick={() => openEdit(a)} sx={{ mr: 1 }}>
+                  <IconButton edge="end" onClick={(e) => { e.stopPropagation(); openEdit(a); }} sx={{ mr: 1 }}>
                     <Edit />
                   </IconButton>
-                  <IconButton edge="end" onClick={() => { setDeleteTargetId(a.id); setOpenDeleteDialog(true); }}>
+                  <IconButton edge="end" onClick={(e) => { e.stopPropagation(); setDeleteTargetId(a.id); setOpenDeleteDialog(true); }}>
                     <Delete />
                   </IconButton>
                 </>
               ) : null}>
-                <ListItemText primary={a.nombre} secondary={a.descripcion} sx={!a.is_visible ? { color: 'warning.main' } : {}} />
+                <ListItemButton onClick={() => router.push(`/actividades/${claseId}/ver/${a.id}`)} sx={{ px: 2 }}>
+                  <ListItemText primary={a.nombre} secondary={a.descripcion} sx={!a.is_visible ? { color: 'warning.main' } : {}} />
+                </ListItemButton>
                 <Box sx={{ display: 'flex', gap: 1, ml: 2 }}>
                   {a.tipo === 'evaluacion' && <Chip label={`Evaluación ${a.fecha_inicio ? `(${new Date(a.fecha_inicio).toLocaleDateString()})` : ''}`} />}
                   {!a.is_visible && <Chip label="Oculta" color="warning" />}
+                    {isProfesor && (
+                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); actividadService.editarActividad(claseId, a.id, { isVisible: !a.is_visible }).then(()=>loadAll()).catch(()=>{}); }}>
+                        {a.is_visible ? <Visibility /> : <VisibilityOff />}
+                      </IconButton>
+                    )}
+                  {isProfesor && (
+                    <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setDeleteTargetId(a.id); setOpenDeleteDialog(true); }}>
+                      <Delete />
+                    </IconButton>
+                  )}
                 </Box>
-              </ListItem>
+                </ListItem>
             ))}
           </List>
         </Paper>
@@ -272,19 +292,75 @@ export default function ActividadesPage() {
                 return found ? (found.metadata?.title || found.titulo || found.enunciado || id) : id;
               }).join(', ')}
                 sx={{ '& .MuiSelect-select': { display: 'flex', alignItems: 'center', paddingTop: 2 } }}
-                MenuProps={{ PaperProps: { sx: { '& .MuiMenuItem-root': { alignItems: 'center', py: 1 } } } }}
+                MenuProps={{ disablePortal: true, PaperProps: { sx: { '& .MuiMenuItem-root': { alignItems: 'center', py: 1 } } } }}
               >
                 {ejercicios.map((ej) => (
-                  <MenuItem key={ej.id} value={ej.id}>{ej.metadata?.title || ej.titulo || ej.enunciado || ej.id}</MenuItem>
+                  <MenuItem key={ej.id} value={ej.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <span>{ej.metadata?.title || ej.titulo || ej.enunciado || ej.id}</span>
+                      {ej.belongsToHiddenActivity && (
+                        <Chip label="Oculta" color="warning" size="small" sx={{ ml: 1 }} aria-label="Ejercicio pertenece a actividad oculta" />
+                      )}
+                    </Box>
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
             <Typography sx={{ mb: 1 }}>Crear nuevo ejercicio (opcional)</Typography>
-            <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
-              <Button size="small" onClick={() => alert('HU Ejercicios: Pendiente (no implementado)')} startIcon={<Add />}>Agregar ejercicio</Button>
-              <Typography variant="caption" color="text.secondary">Agregar ejercicios desde aquí será implementado en otra HU.</Typography>
+            {!editingActividadId && (
+              <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
+                <Button size="small" onClick={() => setForm({...form, nuevosEjercicios: [...form.nuevosEjercicios, { tipo: 'abierta', titulo: '', enunciado: '', puntos: 1, opciones: [], metadata: '' }]})} startIcon={<Add />}>Agregar ejercicio</Button>
+              </Box>
+            )}
+              <Typography variant="caption" color="text.secondary">Agrega ejercicios que se crearán y asociarán a la actividad</Typography>
             </Box>
+
+            {!editingActividadId && form.nuevosEjercicios.length > 0 && (
+              <Box sx={{ mb: 2 }}>
+                {form.nuevosEjercicios.map((ne, idx) => (
+                  <Box key={idx} sx={{ border: '1px dashed #DDD', p: 2, mb: 2 }}>
+                    <Box sx={{ display: 'flex', gap: 2, mb: 1, alignItems: 'center' }}>
+                      <TextField fullWidth label={`Título del ejercicio #${idx + 1}`} value={ne.titulo || ''} onChange={(e) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x, i) => i === idx ? { ...x, titulo: e.target.value } : x) })} />
+                      <Button color="error" onClick={() => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.filter((_, i) => i !== idx)})}>Eliminar</Button>
+                    </Box>
+                    <TextField fullWidth label="Enunciado" multiline rows={3} value={ne.enunciado || ''} onChange={(e) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i===idx?{...x, enunciado: e.target.value}:x) })} sx={{ mb: 1 }} />
+                    <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                      <TextField type="number" label="Puntos" value={ne.puntos ?? 1} onChange={(e) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i===idx?{...x, puntos: Number(e.target.value) || 1}:x) })} sx={{ width: 120 }} />
+                      <FormControl fullWidth>
+                        <InputLabel id={`tipo-ej-${idx}`}>Tipo de ejercicio</InputLabel>
+                        <Select labelId={`tipo-ej-${idx}`} value={ne.tipo || 'abierta'} label="Tipo de ejercicio" onChange={(e) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i===idx?{...x, tipo: e.target.value as any}:x) })} MenuProps={{ disablePortal: true }}>
+                          <MenuItem value="abierta">Abierta</MenuItem>
+                          <MenuItem value="multiple-choice">Multiple Choice</MenuItem>
+                          <MenuItem value="verdadero-falso">Verdadero/Falso</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Box>
+                    {ne.tipo === 'multiple-choice' && (
+                      <OptionsEditor opciones={ne.opciones || []} onChange={(opts) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i === idx ? {...x, opciones: opts} : x) })} />
+                    )}
+
+                    {ne.tipo === 'verdadero-falso' && (
+                      <RadioGroup
+                        value={(ne.opciones || []).findIndex((o:any) => o.is_correcta) === 0 ? 'verdadero' : 'falso'}
+                        onChange={(e) => {
+                          const isTrue = e.target.value === 'verdadero';
+                          const nextOpts = [
+                            { texto: 'Verdadero', is_correcta: isTrue },
+                            { texto: 'Falso', is_correcta: !isTrue },
+                          ];
+                          setForm({ ...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i === idx ? { ...x, opciones: nextOpts } : x ) });
+                        }}
+                      >
+                        <FormControlLabel value="verdadero" control={<Radio />} label="Verdadero" />
+                        <FormControlLabel value="falso" control={<Radio />} label="Falso" />
+                      </RadioGroup>
+                    )}
+                    <TextField fullWidth label="Metadata (JSON opcional)" value={typeof ne.metadata === 'object' ? JSON.stringify(ne.metadata) : (ne.metadata || '')} onChange={(e) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i===idx?{...x, metadata: e.target.value}:x) })} multiline rows={3} sx={{ mb: 2 }} />
+                  </Box>
+                ))}
+              </Box>
+            )}
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel id="tipo-ej-label">Tipo de ejercicio</InputLabel>
               <Select labelId="tipo-ej-label" value={form.nuevosEjercicios[0]?.tipo || 'abierta'} label="Tipo de ejercicio" onChange={(e) => setForm({...form, nuevosEjercicios: [{ ...(form.nuevosEjercicios[0]||{}), tipo: e.target.value }]})}>
