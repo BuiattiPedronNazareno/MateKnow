@@ -1,7 +1,3 @@
-// ====================================
-// ARCHIVO: src/versus/versus.controller.ts
-// ====================================
-
 import {
   Controller,
   Get,
@@ -152,6 +148,210 @@ export class VersusController {
     return {
       success: true,
       message: 'Has abandonado la partida',
+    };
+  }
+
+  /**
+   * POST /versus/select-question
+   * Selecciona una pregunta (alternativa REST al evento WebSocket)
+   */
+  @Post('select-question')
+  @HttpCode(HttpStatus.OK)
+  async selectQuestion(
+    @Request() req,
+    @Body() body: { lobbyId: string; questionId: string },
+  ) {
+    const userId = req.user.id;
+    const { lobbyId, questionId } = body;
+
+    // Obtener estado de la partida
+    const gameState = await this.versusService.getGameState(lobbyId);
+
+    if (!gameState) {
+      return {
+        success: false,
+        message: 'Lobby no encontrada',
+      };
+    }
+
+    // Verificar fase
+    if (gameState.phase !== 'selection') {
+      return {
+        success: false,
+        message: 'No estás en fase de selección',
+      };
+    }
+
+    // Verificar turno
+    if (gameState.currentTurn !== userId) {
+      return {
+        success: false,
+        message: 'No es tu turno',
+      };
+    }
+
+    // Identificar jugador
+    const isPlayer1 = gameState.player1.userId === userId;
+    const currentPlayer = isPlayer1 ? gameState.player1 : gameState.player2;
+
+    // Verificar límite
+    if (currentPlayer.selectedQuestions.length >= 5) {
+      return {
+        success: false,
+        message: 'Ya seleccionaste 5 preguntas',
+      };
+    }
+
+    // Validar pregunta
+    const validation = this.versusService.canSelectQuestion(
+      gameState,
+      questionId,
+    );
+
+    if (!validation.valid) {
+      return {
+        success: false,
+        message: validation.reason,
+      };
+    }
+
+    // Agregar pregunta
+    currentPlayer.selectedQuestions.push(questionId);
+
+    if (currentPlayer.selectedQuestions.length === 5) {
+      currentPlayer.hasFinishedSelection = true;
+    }
+
+    // Cambiar turno
+    if (!currentPlayer.hasFinishedSelection) {
+      this.versusService.switchTurn(gameState);
+    }
+
+    // Guardar
+    await this.versusService.saveGameState(gameState);
+
+    return {
+      success: true,
+      data: {
+        selectionsCount: currentPlayer.selectedQuestions.length,
+        hasFinished: currentPlayer.hasFinishedSelection,
+        currentTurn: gameState.currentTurn,
+      },
+    };
+  }
+
+  /**
+   * POST /versus/answer
+   * Responde una pregunta (alternativa REST al evento WebSocket)
+   */
+  @Post('answer')
+  @HttpCode(HttpStatus.OK)
+  async answerQuestion(
+    @Request() req,
+    @Body()
+    body: {
+      lobbyId: string;
+      questionId: string;
+      selectedOption: number;
+      timeSeconds: number;
+    },
+  ) {
+    const userId = req.user.id;
+    const { lobbyId, questionId, selectedOption, timeSeconds } = body;
+
+    // Obtener estado
+    const gameState = await this.versusService.getGameState(lobbyId);
+
+    if (!gameState) {
+      return {
+        success: false,
+        message: 'Lobby no encontrada',
+      };
+    }
+
+    // Verificar fase
+    if (gameState.phase !== 'answering') {
+      return {
+        success: false,
+        message: 'No estás en fase de respuesta',
+      };
+    }
+
+    // Identificar jugador
+    const isPlayer1 = gameState.player1.userId === userId;
+    const currentPlayer = isPlayer1 ? gameState.player1 : gameState.player2;
+
+    // Verificar que la pregunta esté asignada
+    if (!currentPlayer.assignedQuestions.includes(questionId)) {
+      return {
+        success: false,
+        message: 'Esta pregunta no te fue asignada',
+      };
+    }
+
+    // Verificar que no haya respondido ya
+    const alreadyAnswered = currentPlayer.answers.some(
+      (ans) => ans.questionId === questionId,
+    );
+
+    if (alreadyAnswered) {
+      return {
+        success: false,
+        message: 'Ya respondiste esta pregunta',
+      };
+    }
+
+    // Obtener pregunta
+    const question = this.versusService.getQuestionById(questionId);
+
+    if (!question) {
+      return {
+        success: false,
+        message: 'Pregunta no encontrada',
+      };
+    }
+
+    // Verificar respuesta
+    const isCorrect = question.respuestaCorrecta === selectedOption;
+
+    // Calcular puntos
+    const points = this.versusService.calculatePoints(isCorrect, timeSeconds);
+
+    // Crear respuesta
+    const answer = {
+      questionId,
+      selectedOption,
+      isCorrect,
+      timeSeconds,
+      points,
+      answeredAt: new Date(),
+    };
+
+    // Agregar respuesta
+    currentPlayer.answers.push(answer);
+    currentPlayer.totalPoints += points;
+
+    if (isCorrect) {
+      currentPlayer.correctAnswers++;
+    }
+
+    // Verificar si terminó
+    if (currentPlayer.answers.length === 5) {
+      currentPlayer.hasFinishedAnswering = true;
+    }
+
+    // Guardar
+    await this.versusService.saveGameState(gameState);
+
+    return {
+      success: true,
+      data: {
+        isCorrect,
+        points,
+        totalPoints: currentPlayer.totalPoints,
+        answersCount: currentPlayer.answers.length,
+        hasFinished: currentPlayer.hasFinishedAnswering,
+      },
     };
   }
 

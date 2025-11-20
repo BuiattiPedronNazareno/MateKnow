@@ -12,7 +12,6 @@ import {
   VersusQuestion 
 } from './interfaces/game-state.interface';
 import { PlayerSession } from './interfaces/player-session.interface';
-
 /**
  * Servicio principal del Modo Versus
  * Gestiona lobbies, matchmaking y estado del juego en Redis
@@ -284,6 +283,75 @@ export class VersusService {
     const timeBonus = Math.max(0, 10 - timeSeconds) * 5;
     
     return basePoints + timeBonus;
+  }
+
+  /**
+   * Valida si una pregunta puede ser seleccionada
+   * Verifica que no haya sido seleccionada ya por ningún jugador
+   */
+  canSelectQuestion(
+    gameState: GameState,
+    questionId: string,
+  ): { valid: boolean; reason?: string } {
+    // Verificar que la pregunta existe
+    const question = this.getQuestionById(questionId);
+    if (!question) {
+      return { valid: false, reason: 'La pregunta no existe' };
+    }
+
+    // Verificar que no haya sido seleccionada por player1
+    if (gameState.player1.selectedQuestions.includes(questionId)) {
+      return { valid: false, reason: 'Esta pregunta ya fue seleccionada' };
+    }
+
+    // Verificar que no haya sido seleccionada por player2
+    if (gameState.player2.selectedQuestions.includes(questionId)) {
+      return { valid: false, reason: 'Esta pregunta ya fue seleccionada' };
+    }
+
+    return { valid: true };
+  }
+
+  /**
+   * Verifica si ambos jugadores terminaron de seleccionar
+   */
+  haveBothFinishedSelection(gameState: GameState): boolean {
+    return (
+      gameState.player1.hasFinishedSelection &&
+      gameState.player2.hasFinishedSelection
+    );
+  }
+
+  /**
+   * Asigna las preguntas seleccionadas a cada jugador
+   * Player1 responde las que seleccionó Player2 y viceversa
+   */
+  assignQuestionsToPlayers(gameState: GameState): GameState {
+    // Player1 responde las preguntas seleccionadas por Player2
+    gameState.player1.assignedQuestions = [
+      ...gameState.player2.selectedQuestions,
+    ];
+
+    // Player2 responde las preguntas seleccionadas por Player1
+    gameState.player2.assignedQuestions = [
+      ...gameState.player1.selectedQuestions,
+    ];
+
+    return gameState;
+  }
+
+  /**
+   * Cambia el turno al otro jugador
+   */
+  switchTurn(gameState: GameState): GameState {
+    gameState.currentTurn =
+      gameState.currentTurn === gameState.player1.userId
+        ? gameState.player2.userId
+        : gameState.player1.userId;
+
+    gameState.turnStartedAt = new Date();
+
+    return gameState;
   }
 
   /**
