@@ -36,6 +36,7 @@ import {
   Radio,
   RadioGroup,
   FormControlLabel,
+  Collapse,
 } from '@mui/material';
 
 import {
@@ -54,6 +55,10 @@ import {
   MoreVert,
   Edit,
   Delete,
+  Comment as CommentIcon,
+  Send as SendIcon,
+  KeyboardArrowLeft,
+  KeyboardArrowRight,
 } from '@mui/icons-material';
 import { claseService, ClaseDetalle } from '@/app/services/claseService';
 import { authService } from '@/app/services/authService';
@@ -62,7 +67,7 @@ import MatricularAlumnoDialog from '@/app/components/MatricularAlumnoDialog';
 import EjercicioForm from '@/app/components/EjercicioForm';
 import { ejercicioService } from '@/app/services/ejercicioService';
 import OptionsEditor from '@/app/actividades/[claseId]/components/OptionsEditor';
-import { anuncioService, Anuncio, CreateAnuncioData } from '@/app/services/anuncioService';
+import { anuncioService, Anuncio, CreateAnuncioData, Comentario } from '@/app/services/anuncioService';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -113,6 +118,30 @@ export default function DetalleClasePage() {
   const [crearEjercicioLoading, setCrearEjercicioLoading] = useState(false);
   const [crearEjercicioError, setCrearEjercicioError] = useState('');
 
+  // Estados para anuncios
+  const [anuncios, setAnuncios] = useState<Anuncio[]>([]);
+  const [loadingAnuncios, setLoadingAnuncios] = useState(false);
+  const [openAnuncioDialog, setOpenAnuncioDialog] = useState(false);
+  const [editingAnuncio, setEditingAnuncio] = useState<Anuncio | null>(null);
+  const [anuncioFormData, setAnuncioFormData] = useState<CreateAnuncioData>({
+    titulo: '',
+    descripcion: '',
+  });
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [selectedAnuncio, setSelectedAnuncio] = useState<Anuncio | null>(null);
+  const [submittingAnuncio, setSubmittingAnuncio] = useState(false);
+
+  // --- ESTADOS PARA COMENTARIOS ---
+  const [expandedAnuncioId, setExpandedAnuncioId] = useState<string | null>(null);
+  const [commentsMap, setCommentsMap] = useState<{ [key: string]: Comentario[] }>({});
+  const [paginationMap, setPaginationMap] = useState<{ [key: string]: { page: number; lastPage: number; total: number } }>({});
+  const [loadingComments, setLoadingComments] = useState<string | null>(null);
+  const [newCommentText, setNewCommentText] = useState('');
+  
+  // Estados para el modal de eliminar comentario
+  const [openDeleteCommentDialog, setOpenDeleteCommentDialog] = useState(false);
+  const [deleteCommentTarget, setDeleteCommentTarget] = useState<{ anuncioId: string; comentarioId: string } | null>(null);
+
   const handleCrearEjercicioSubmit = async (payload: any) => {
     setCrearEjercicioLoading(true);
     setCrearEjercicioError('');
@@ -125,17 +154,14 @@ export default function DetalleClasePage() {
           const current = (all.actividades || []).find((x: any) => x.id === crearEjercicioAttachActividadId);
           const prevIds = (current?.ejercicios || []).map((e: any) => e.id);
           await actividadService.editarActividad(claseId, crearEjercicioAttachActividadId, { ejercicioIds: [...prevIds, newEjercicioId] });
-          // close and reload
           setOpenCrearEjercicioModal(false);
           setCrearEjercicioAttachActividadId(null);
           await loadActividades();
           return;
         } catch (err) {
-          // fallback: ignore and continue
           console.error('Error attaching ejercicio', err);
         }
       }
-      // fallback behavior: close and refresh list
       setOpenCrearEjercicioModal(false);
       await loadActividades();
     } catch (err: any) {
@@ -176,19 +202,6 @@ export default function DetalleClasePage() {
   const [copySuccess, setCopySuccess] = useState(false);
   const user = authService.getUser();
 
-  // Estados para anuncios
-  const [anuncios, setAnuncios] = useState<Anuncio[]>([]);
-  const [loadingAnuncios, setLoadingAnuncios] = useState(false);
-  const [openAnuncioDialog, setOpenAnuncioDialog] = useState(false);
-  const [editingAnuncio, setEditingAnuncio] = useState<Anuncio | null>(null);
-  const [anuncioFormData, setAnuncioFormData] = useState<CreateAnuncioData>({
-    titulo: '',
-    descripcion: '',
-  });
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedAnuncio, setSelectedAnuncio] = useState<Anuncio | null>(null);
-  const [submittingAnuncio, setSubmittingAnuncio] = useState(false);
-
   useEffect(() => {
     loadClase();
     loadActividades();
@@ -221,7 +234,6 @@ export default function DetalleClasePage() {
       const res = await actividadService.listarActividades(claseId);
       setActividades(res.actividades || []);
     } catch (err: any) {
-      // No mostrar bloqueo crítico; registrar en consola y mostrar alert por arriba si se desea
       console.error('Error al cargar actividades:', err?.response?.data || err.message || err);
     } finally {
       setLoadingActividades(false);
@@ -275,16 +287,7 @@ export default function DetalleClasePage() {
   };
 
   const handleSalirClase = async () => {
-    // kept for direct call if needed; prefer opening the non-blocking dialog
     setOpenSalirDialog(true);
-    return;
-    
-    try {
-      await claseService.salirDeClase(claseId);
-      router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Error al salir de la clase');
-    }
   };
 
   // Funciones para manejar anuncios
@@ -347,7 +350,6 @@ export default function DetalleClasePage() {
 
   const handleDeleteAnuncio = async () => {
     if (!selectedAnuncio) return;
-    // Open the modal confirm instead of native confirm
     setOpenDeleteAnuncioDialog(true);
     handleMenuClose();
   };
@@ -361,6 +363,81 @@ export default function DetalleClasePage() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  // --- FUNCIONALIDAD DE COMENTARIOS ---
+  
+  const loadComentarios = async (anuncioId: string, page: number = 1) => {
+    try {
+      setLoadingComments(anuncioId);
+      const res = await anuncioService.getComentarios(anuncioId, page);
+      
+      setCommentsMap(prev => ({ ...prev, [anuncioId]: res.comentarios }));
+      setPaginationMap(prev => ({ 
+        ...prev, 
+        [anuncioId]: { 
+          page: res.meta.page, 
+          lastPage: res.meta.lastPage,
+          total: res.meta.total
+        } 
+      }));
+    } catch (err) {
+      console.error("Error cargando comentarios", err);
+    } finally {
+      setLoadingComments(null);
+    }
+  };
+
+  const handleToggleComments = async (anuncioId: string) => {
+    if (expandedAnuncioId === anuncioId) {
+      setExpandedAnuncioId(null);
+      return;
+    }
+    setExpandedAnuncioId(anuncioId);
+    // Cargar siempre la página 1 al abrir
+    await loadComentarios(anuncioId, 1);
+  };
+
+  const handleChangePage = async (anuncioId: string, newPage: number) => {
+    await loadComentarios(anuncioId, newPage);
+  };
+
+  const handleSendComment = async (anuncioId: string) => {
+    if (!newCommentText.trim()) return;
+    try {
+      await anuncioService.createComentario(anuncioId, newCommentText);
+      setNewCommentText('');
+      // Recargar página 1 para ver el nuevo comentario
+      await loadComentarios(anuncioId, 1);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Error al comentar');
+    }
+  };
+
+  // Abre el modal de confirmación
+  const handleDeleteComment = (anuncioId: string, comentarioId: string) => {
+    setDeleteCommentTarget({ anuncioId, comentarioId });
+    setOpenDeleteCommentDialog(true);
+  };
+
+  // Ejecuta la eliminación (Instantáneo)
+  const handleConfirmDeleteComment = async () => {
+    // 1. Cierre instantáneo
+    setOpenDeleteCommentDialog(false);
+
+    if (!deleteCommentTarget) return;
+    const { anuncioId, comentarioId } = deleteCommentTarget;
+
+    // 2. Operación en segundo plano
+    try {
+      await anuncioService.deleteComentario(comentarioId);
+      // Recargar la página actual para mantener contexto
+      const currentPage = paginationMap[anuncioId]?.page || 1;
+      await loadComentarios(anuncioId, currentPage);
+      setDeleteCommentTarget(null);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Error al eliminar comentario');
+    }
   };
 
   if (loading) {
@@ -559,19 +636,6 @@ export default function DetalleClasePage() {
                       borderRadius: 1,
                       border: '1px solid #F0E68C',
                       boxShadow: '4px 4px 8px rgba(0,0,0,0.15)',
-                      transition: 'transform 0.2s, box-shadow 0.2s',
-                      '&:hover': {
-                        transform: 'translateY(-2px)',
-                        boxShadow: '6px 6px 12px rgba(0,0,0,0.2)',
-                      },
-                      '&::before': {
-                        content: '"📌"',
-                        position: 'absolute',
-                        top: -10,
-                        right: 20,
-                        fontSize: '24px',
-                        zIndex: 1,
-                      }
                     }}
                   >
                     <CardContent sx={{ pt: 3 }}>
@@ -582,9 +646,6 @@ export default function DetalleClasePage() {
                             fontWeight: 600,
                             color: '#3E2723',
                             flex: 1,
-                            wordBreak: 'break-word',
-                            overflowWrap: 'break-word',
-                            hyphens: 'auto',
                           }}
                         >
                           {anuncio.titulo}
@@ -595,12 +656,8 @@ export default function DetalleClasePage() {
                             onClick={(e: React.MouseEvent<HTMLElement>) => handleMenuOpen(e, anuncio)}
                             sx={{
                               color: '#8B4513',
-                              flexShrink: 0,
                               ml: 'auto',
                               display: anuncio.autor.id === user?.id ? 'flex' : 'none',
-                              '&:hover': {
-                                background: 'rgba(139, 69, 19, 0.1)',
-                              }
                             }}
                           >
                             <MoreVert />
@@ -615,8 +672,6 @@ export default function DetalleClasePage() {
                           mb: 2, 
                           whiteSpace: 'pre-wrap',
                           lineHeight: 1.6,
-                          wordBreak: 'break-word',
-                          overflowWrap: 'break-word',
                         }}
                       >
                         {anuncio.descripcion}
@@ -638,6 +693,138 @@ export default function DetalleClasePage() {
                           {anuncio.autor.nombre} {anuncio.autor.apellido} • {formatDate(anuncio.fechaPublicacion)}
                         </Typography>
                       </Box>
+
+                      {/* --- SECCIÓN DE COMENTARIOS --- */}
+                      <Box sx={{ display: 'flex', alignItems: 'center', mt: 2, pt: 2, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
+                        <Button 
+                          size="small" 
+                          startIcon={<CommentIcon />}
+                          onClick={() => handleToggleComments(anuncio.id)}
+                          sx={{ color: '#8B4513' }}
+                        >
+                          {expandedAnuncioId === anuncio.id ? 'Ocultar consultas' : 'Ver consultas'}
+                        </Button>
+                      </Box>
+
+                      <Collapse in={expandedAnuncioId === anuncio.id} timeout="auto" unmountOnExit>
+                        <Box sx={{ mt: 2, pl: 2, pr: 2, pb: 2, bgcolor: 'rgba(255,255,255,0.5)', borderRadius: 1 }}>
+                          
+                          {loadingComments === anuncio.id ? (
+                            <CircularProgress size={20} sx={{ display: 'block', mx: 'auto', my: 2 }} />
+                          ) : (commentsMap[anuncio.id] || []).length === 0 ? (
+                            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                              No hay consultas aún. ¡Sé el primero!
+                            </Typography>
+                          ) : (
+                            <>
+                              <List dense>
+                                {(commentsMap[anuncio.id] || []).map((comentario) => (
+                                  <ListItem 
+                                    key={comentario.id}
+                                    alignItems="flex-start"
+                                    sx={{ 
+                                      bgcolor: 'white', 
+                                      mb: 1, 
+                                      borderRadius: 1, 
+                                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)' 
+                                    }}
+                                    secondaryAction={
+                                      clase.isProfesor && (
+                                        <IconButton edge="end" size="small" onClick={() => handleDeleteComment(anuncio.id, comentario.id)}>
+                                          <Delete fontSize="small" color="action" />
+                                        </IconButton>
+                                      )
+                                    }
+                                  >
+                                    <ListItemAvatar sx={{ minWidth: 40 }}>
+                                      <Avatar 
+                                        sx={{ width: 24, height: 24, fontSize: '0.6rem', bgcolor: '#A0522D' }}
+                                      >
+                                        {comentario.autor.nombre[0]}
+                                      </Avatar>
+                                    </ListItemAvatar>
+                                    <ListItemText
+                                      primary={
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                          <Typography variant="subtitle2" sx={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                            {comentario.autor.nombre} {comentario.autor.apellido}
+                                          </Typography>
+                                          <Typography variant="caption" color="text.secondary">
+                                            {formatDate(comentario.createdAt)}
+                                          </Typography>
+                                        </Box>
+                                      }
+                                      secondary={
+                                        <Typography variant="body2" color="text.primary" sx={{ mt: 0.5 }}>
+                                          {comentario.contenido}
+                                        </Typography>
+                                      }
+                                    />
+                                  </ListItem>
+                                ))}
+                              </List>
+
+                              {/* CONTROLES DE PAGINACIÓN */}
+                              {paginationMap[anuncio.id] && paginationMap[anuncio.id].lastPage > 1 && (
+                                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 1, mb: 1 }}>
+                                  <IconButton 
+                                    size="small" 
+                                    disabled={paginationMap[anuncio.id].page === 1}
+                                    onClick={() => handleChangePage(anuncio.id, paginationMap[anuncio.id].page - 1)}
+                                  >
+                                    <KeyboardArrowLeft />
+                                  </IconButton>
+                                  
+                                  <Typography variant="caption" color="text.secondary">
+                                    Página {paginationMap[anuncio.id].page} de {paginationMap[anuncio.id].lastPage}
+                                  </Typography>
+
+                                  <IconButton 
+                                    size="small" 
+                                    disabled={paginationMap[anuncio.id].page === paginationMap[anuncio.id].lastPage}
+                                    onClick={() => handleChangePage(anuncio.id, paginationMap[anuncio.id].page + 1)}
+                                  >
+                                    <KeyboardArrowRight />
+                                  </IconButton>
+                                </Box>
+                              )}
+                            </>
+                          )}
+
+                          {/* Input Nuevo Comentario */}
+                          <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              placeholder="Escribe una consulta..."
+                              value={newCommentText}
+                              onChange={(e) => setNewCommentText(e.target.value)}
+                              onKeyPress={(e) => { if (e.key === 'Enter') handleSendComment(anuncio.id); }}
+                              sx={{ bgcolor: 'white' }}
+                            />
+                            <IconButton 
+                              onClick={() => handleSendComment(anuncio.id)}
+                              disabled={!newCommentText.trim()}
+                              sx={{ 
+                                bgcolor: '#8B4513', 
+                                color: 'white', 
+                                width: 40,
+                                height: 40,
+                                '&:hover': { 
+                                  bgcolor: '#5D4037' 
+                                },
+                                '&.Mui-disabled': {
+                                  bgcolor: 'rgba(0, 0, 0, 0.12)',
+                                  color: 'rgba(0, 0, 0, 0.26)'
+                                }
+                              }}
+                            >
+                              <SendIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+
+                        </Box>
+                      </Collapse>
                     </CardContent>
                   </Card>
                 ))}
@@ -763,11 +950,9 @@ export default function DetalleClasePage() {
                       <Chip label="Evaluación" size="small" sx={{ mr: 1 }} />
                     )}
                     {!a.is_visible && <Chip label="Oculta" color="warning" size="small" sx={{ ml: 1 }} />}
-                    {/* 'Ver' is redundante porque la actividad es clickeable con ListItemButton */}
                     {clase.isProfesor && (
                       <IconButton size="small" aria-label="edit-activity" onClick={async (e: React.MouseEvent<HTMLElement>) => {
-                        e.stopPropagation(); // prevent navigating when action inside the item
-                        // Open in edit mode
+                        e.stopPropagation();
                         const res = await actividadService.listarActividades(claseId);
                         const actividad = (res.actividades || []).find((x: any) => x.id === a.id);
                         if (!actividad) {
@@ -813,7 +998,7 @@ export default function DetalleClasePage() {
           )}
         </Paper>
 
-        {/* Dialog Crear Actividad (en línea) */}
+        {/* Dialog Crear Actividad */}
         <Dialog open={openCrearActividadDialog} onClose={() => setOpenCrearActividadDialog(false)} fullWidth>
             <DialogTitle>{editingActividadId ? 'Editar Actividad' : 'Crear Actividad'}</DialogTitle>
             <DialogContent sx={{ pt: 2 }}>
@@ -918,11 +1103,9 @@ export default function DetalleClasePage() {
             <Button onClick={() => setOpenCrearActividadDialog(false)}>Cancelar</Button>
             <Button variant="contained" onClick={async () => {
               try {
-                // prepare payload similar to actividades page
                 const payload = { ...crearForm } as any;
                 if (payload.fechaInicio) payload.fechaInicio = new Date(payload.fechaInicio).toISOString();
                 if (payload.fechaFin) payload.fechaFin = new Date(payload.fechaFin).toISOString();
-                // Validations
                 if (!payload.nombre || !payload.nombre.trim() || !payload.descripcion || !payload.descripcion.trim()) {
                   alert('Nombre y descripción son obligatorios');
                   return;
@@ -932,7 +1115,6 @@ export default function DetalleClasePage() {
                   return;
                 }
 
-                // Normalize and validate nuevosEjercicios if provided (quick-add)
                 if (payload.nuevosEjercicios && payload.nuevosEjercicios.length > 0) {
                   payload.nuevosEjercicios = payload.nuevosEjercicios.map((e: any) => {
                     const copy: any = { ...e };
@@ -944,7 +1126,6 @@ export default function DetalleClasePage() {
                   });
                 }
 
-                // Validate MCQ options
                 if (payload.nuevosEjercicios && payload.nuevosEjercicios.length > 0) {
                   for (const e of payload.nuevosEjercicios) {
                     if (e.tipo === 'multiple-choice') {
@@ -967,27 +1148,19 @@ export default function DetalleClasePage() {
                     }
                   }
                 }
-                // DEBUG: log payload for quick-add integration issues
-                // Remove or guard with env when done
-                // eslint-disable-next-line no-console
-                console.debug('CrearActividad payload.nuevosEjercicios:', payload.nuevosEjercicios);
 
                 if (editingActividadId) {
-                  // Update DTO doesn't accept `tipo`, but it DOES accept `nuevosEjercicios` —
-                  // allow quick-add from the edit flow by passing it through.
                   const allowedKeys = ['nombre', 'descripcion', 'fechaInicio', 'fechaFin', 'isVisible', 'ejercicioIds'];
                   const updatePayload: any = {};
                   for (const k of allowedKeys) {
                     if ((payload as any)[k] !== undefined) updatePayload[k] = (payload as any)[k];
                   }
-                  // Close dialog immediately to be responsive
                   setOpenCrearActividadDialog(false);
                   await actividadService.editarActividad(claseId, editingActividadId, updatePayload);
                 } else {
                   setOpenCrearActividadDialog(false);
                   await actividadService.crearActividad(claseId, payload);
                 }
-                // already closed above
                 await loadActividades();
                 resetCrearForm();
                 setEditingActividadId(null);
@@ -1022,7 +1195,7 @@ export default function DetalleClasePage() {
           </DialogActions>
         </Dialog>
 
-        {/* Dialog Ver Actividad inline para evitar 404 */}
+        {/* Dialog Ver Actividad inline */}
         <Dialog open={openVerActividad} onClose={() => setOpenVerActividad(false)} fullWidth>
           <DialogTitle>Ver Actividad</DialogTitle>
           <DialogContent>
@@ -1204,6 +1377,24 @@ export default function DetalleClasePage() {
               onCancel={() => { setOpenCrearEjercicioModal(false); setCrearEjercicioAttachActividadId(null); }}
             />
           </DialogContent>
+        </Dialog>
+
+        {/* Dialog para confirmar eliminación de comentario (Instantáneo) */}
+        <Dialog open={openDeleteCommentDialog} onClose={() => setOpenDeleteCommentDialog(false)}>
+          <DialogTitle>Eliminar comentario</DialogTitle>
+          <DialogContent>
+            <Typography>¿Deseas eliminar este comentario? Esta acción no se puede deshacer.</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenDeleteCommentDialog(false)}>Cancelar</Button>
+            <Button 
+              color="error" 
+              variant="contained" 
+              onClick={handleConfirmDeleteComment}
+            >
+              Eliminar
+            </Button>
+          </DialogActions>
         </Dialog>
 
         {/* Menú contextual para anuncios */}
