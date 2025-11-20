@@ -446,50 +446,59 @@ export class ActividadService {
     const inicio = actividad.fecha_inicio ? new Date(actividad.fecha_inicio) : null;
     const fin = actividad.fecha_fin ? new Date(actividad.fecha_fin) : null;
 
-    // Buscar intentos previos
-    const { data: intentos } = await supabase
+    // 1. Buscar si hay uno "en progreso", lo retomamos siempre
+    const { data: enProgreso } = await supabase
       .from('actividad_resultado')
       .select('*')
       .eq('actividad_id', actividadId)
-      .eq('usuario_id', userId);
-
-    // CASO 1: EVALUACIÓN (Estricto)
-    if (actividad.tipo === 'evaluacion') {
-        if (inicio && ahora < inicio) throw new ForbiddenException('La evaluación aún no ha comenzado');
-        if (fin && ahora > fin) throw new ForbiddenException('El tiempo para esta evaluación ha finalizado');
-
-        const finalizado = intentos?.find(i => i.estado === 'finished');
-        if (finalizado) return { message: 'Evaluación ya realizada', intento: finalizado };
-    }
-
-    // CASO 2: PRÁCTICA & EVALUACIÓN (Común)
-    // Si hay uno "en progreso", lo retomamos siempre (para evitar crear basura)
-    const enProgreso = intentos?.find(i => i.estado === 'in_progress');
+      .eq('usuario_id', userId)
+      .eq('estado', 'in_progress')
+      .maybeSingle();
+      
     if (enProgreso) {
       return { message: 'Retomando intento', intento: enProgreso };
     }
 
-    // Si es práctica y no hay en progreso, creamos uno NUEVO (aunque existan finalizados)
-    // Si es evaluación, llegará aquí solo si no hay ninguno (ni finished ni in_progress)
+  // 2. NUEVA LÓGICA ANTI-RACE CONDITION
+  // Antes de insertar, borrar intentos "zombies" creados hace menos de 1 min sin respuestas
+  // Esto limpia la basura generada por el doble request del frontend
+  const haceUnMinuto = new Date(Date.now() - 60 * 1000).toISOString();
+  await supabase
+    .from('actividad_resultado')
+    .delete()
+    .eq('actividad_id', actividadId)
+    .eq('usuario_id', userId)
+    .eq('estado', 'in_progress')
+    .lt('puntaje', 0) // Opcional: filtro de seguridad
+    .gte('created_at', haceUnMinuto);
 
-    const { data: nuevoIntento, error: createError } = await supabase
-      .from('actividad_resultado')
-      .insert({
-        actividad_id: actividadId,
-        clase_id: actividad.clase_id,
-        usuario_id: userId,
-        registro_id: `ATT-${Date.now()}`,
-        respuestas: [],
-        estado: 'in_progress',
-        started_at: new Date(),
-      })
-      .select()
-      .single();
+  // 3. Insertar Nuevo (Lógica existente)
+  const { data: nuevoIntento, error: createError } = await supabase
+    .from('actividad_resultado')
+    .insert({
+      // ... tus campos
+      actividad_id: actividadId,
+      clase_id: actividad.clase_id,
+      usuario_id: userId,
+      registro_id: `ATT-${Date.now()}`,
+      respuestas: [],
+      estado: 'in_progress',
+      started_at: new Date(),
+    })
+    .select()
+    .single();
 
-    if (createError) throw new InternalServerErrorException('Error al iniciar intento');
-
-    return { message: 'Actividad iniciada', intento: nuevoIntento };
+  if (createError) {
+     // Si falla por unique constraint (si tuvieras), intentamos recuperar el que ganó la carrera
+     if (createError.code === '23505') { 
+        const { data: retry } = await supabase.from('actividad_resultado').select('*').eq('actividad_id', actividadId).eq('usuario_id', userId).eq('estado', 'in_progress').single();
+        return { message: 'Retomando intento (recuperado)', intento: retry };
+     }
+     throw new InternalServerErrorException('Error al iniciar intento: ' + createError.message); 
   }
+
+  return { message: 'Actividad iniciada', intento: nuevoIntento };
+}
 
   /**
    * CA5: Guardado automático
@@ -528,32 +537,88 @@ export class ActividadService {
   }
 
   /**
-   * CA4: Finalizar y Calificar (Con fix de Race Condition)
+   * CA4: Finalizar y Calificar
    */
-  async finalizarIntento(resultadoId: string, userId: string, accessToken?: string, dto?: FinalizarIntentoDto) {
+  async finalizarIntento(
+    resultadoId: string, 
+    userId: string, 
+    accessToken?: string, 
+    dto?: FinalizarIntentoDto | any
+  ) {
     const supabase = this.supabaseService.getClient(accessToken);
 
-    // PASO PREVIO: Si vienen respuestas finales, actualizarlas antes de calificar
-    if (dto && dto.respuestas && Array.isArray(dto.respuestas)) {
-        const { error: updateError } = await supabase
-            .from('actividad_resultado')
-            .update({ respuestas: dto.respuestas, updated_at: new Date() })
-            .eq('id', resultadoId)
-            .eq('usuario_id', userId);
+    // ---------------------------------------------------------
+    // 1. NORMALIZACIÓN DE RESPUESTAS (Fix Frontend Payload)
+    // ---------------------------------------------------------
+    let respuestasFinales: any[] = [];
 
-        if (updateError) throw new InternalServerErrorException('Error al sincronizar respuestas finales');
+    if (dto) {
+      if (Array.isArray(dto)) {
+        respuestasFinales = dto;
+      } else if (dto.respuestas && Array.isArray(dto.respuestas)) {
+        respuestasFinales = dto.respuestas;
+      }
     }
 
+    // ---------------------------------------------------------
+    // 1.5. SANITIZACIÓN
+    // ---------------------------------------------------------
+    // Si por error llega un array anidado [[...]], lo aplanamos.
+    // Esto convierte [[]] en [] y [[{data}]] en [{data}].
+    if (respuestasFinales.length > 0 && Array.isArray(respuestasFinales[0])) {
+        respuestasFinales = respuestasFinales.flat();
+    }
+
+    // Filtrar basura: aseguramos que solo queden objetos válidos con ejercicioId
+    respuestasFinales = respuestasFinales.filter(r => 
+        r && typeof r === 'object' && !Array.isArray(r) && r.ejercicioId
+    );
+
+    // ---------------------------------------------------------
+    // 2. PERSISTENCIA PREVIA (Guardar respuestas limpias)
+    // ---------------------------------------------------------
+    // Solo actualizamos si hay respuestas válidas nuevas
+    if (respuestasFinales.length > 0) {
+      const { error: updateError } = await supabase
+        .from('actividad_resultado')
+        .update({ 
+          respuestas: respuestasFinales, 
+          updated_at: new Date() 
+        })
+        .eq('id', resultadoId)
+        .eq('usuario_id', userId);
+
+      if (updateError) {
+        this.logger.error(`Error guardando respuestas: ${updateError.message}`);
+        throw new InternalServerErrorException('Error al guardar respuestas');
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 3. OBTENCIÓN DEL INTENTO
+    // ---------------------------------------------------------
     const { data: intento } = await supabase
       .from('actividad_resultado')
       .select('*, actividad:actividad_id(*)')
       .eq('id', resultadoId)
       .single();
 
-    if (!intento || intento.estado !== 'in_progress') {
-      throw new BadRequestException('Intento no válido para finalizar');
+    // Si ya estaba finalizado, retornamos el resultado existente
+    if (intento && intento.estado === 'finished') {
+        return { 
+            message: 'Evaluación ya finalizada anteriormente', 
+            puntaje: intento.puntaje, 
+            resultado: intento 
+        };
     }
 
+    if (!intento || intento.usuario_id !== userId) {
+      throw new BadRequestException('Intento no válido');
+    }
+
+    // ---------------------------------------------------------
+    // 4. CALIFICACIÓN
+    // ---------------------------------------------------------
     const { data: ejercicios } = await supabase
       .from('actividad_ejercicio')
       .select(`
@@ -565,32 +630,45 @@ export class ActividadService {
       .eq('actividad_id', intento.actividad_id);
 
     let puntajeTotal = 0;
-    const respuestasUsuario = (intento.respuestas as any[]) || [];
+    // Usamos las respuestas limpias (o las de DB si el payload vino vacío)
+    let respuestasUsuario = respuestasFinales.length > 0 ? respuestasFinales : (intento.respuestas as any[]) || [];
+    
+    // Doble check de sanitización por si DB tenía basura vieja
+    if (respuestasUsuario.length > 0 && Array.isArray(respuestasUsuario[0])) {
+        respuestasUsuario = respuestasUsuario.flat();
+    }
 
     (ejercicios || []).forEach((item: any) => {
       const ej = item.ejercicio;
-      const respuestaUser = respuestasUsuario.find(r => r.ejercicioId === ej.id);
+      if (!ej) return;
+
+      const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
 
       if (respuestaUser && ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
         const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
-        if (opcionCorrecta && respuestaUser.respuesta === opcionCorrecta.id) {
+        
+        if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
           puntajeTotal += Number(ej.puntos);
         }
       }
     });
 
+    // ---------------------------------------------------------
+    // 5. CIERRE DEL INTENTO
+    // ---------------------------------------------------------
     const { data: resultadoFinal, error } = await supabase
       .from('actividad_resultado')
       .update({
         estado: 'finished',
         puntaje: puntajeTotal,
         finished_at: new Date(),
+        respuestas: respuestasUsuario
       })
       .eq('id', resultadoId)
       .select()
       .single();
 
-    if (error) throw new InternalServerErrorException('Error al finalizar evaluación');
+    if (error) throw new InternalServerErrorException('Error al finalizar: ' + error.message);
 
     return { 
       message: 'Evaluación enviada correctamente', 
