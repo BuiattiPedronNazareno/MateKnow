@@ -83,6 +83,15 @@ export interface UpdateAnuncioData {
   descripcion?: string;
 }
 
+export interface AnunciosResponse {
+  anuncios: Anuncio[];
+  meta: {
+    total: number;
+    page: number;
+    lastPage: number;
+  };
+}
+
 export const anuncioService = {
  
   async createAnuncio(claseId: string, data: CreateAnuncioData): Promise<{ message: string; anuncio: Anuncio }> {
@@ -90,8 +99,10 @@ export const anuncioService = {
     return response.data;
   },
 
-  async getAnunciosByClase(claseId: string): Promise<{ anuncios: Anuncio[] }> {
-    const response = await api.get(`/clase/${claseId}`);
+  async getAnunciosByClase(claseId: string, page: number = 1, limit: number = 5): Promise<AnunciosResponse> {
+    const response = await api.get(`/clase/${claseId}`, {
+      params: { page, limit }
+    });
     return response.data;
   },
 
