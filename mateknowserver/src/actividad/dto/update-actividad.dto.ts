@@ -1,6 +1,5 @@
 import { IsOptional, IsString, IsBoolean, IsISO8601, IsArray, ValidateNested } from 'class-validator';
-import { Transform } from 'class-transformer';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { CreateEjercicioDto } from './create-actividad.dto';
 
 export class UpdateActividadDto {
@@ -16,12 +15,7 @@ export class UpdateActividadDto {
   @Transform(({ value }) => {
     if (!value) return undefined;
     if (typeof value !== 'string') return value;
-    const v = value.trim();
-    if (v === '') return undefined;
-    if (v.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(v)) return v;
-    const parsed = new Date(v);
-    if (isNaN(parsed.getTime())) return v;
-    return parsed.toISOString();
+    return new Date(value).toISOString();
   })
   @IsISO8601()
   fechaInicio?: string;
@@ -30,12 +24,7 @@ export class UpdateActividadDto {
   @Transform(({ value }) => {
     if (!value) return undefined;
     if (typeof value !== 'string') return value;
-    const v = value.trim();
-    if (v === '') return undefined;
-    if (v.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(v)) return v;
-    const parsed = new Date(v);
-    if (isNaN(parsed.getTime())) return v;
-    return parsed.toISOString();
+    return new Date(value).toISOString();
   })
   @IsISO8601()
   fechaFin?: string;
@@ -44,11 +33,13 @@ export class UpdateActividadDto {
   @IsBoolean()
   isVisible?: boolean;
 
+  // CORRECCIÓN: Quitamos @IsUUID para evitar conflictos, solo validamos que sea Array
   @IsOptional()
   @IsArray()
   ejercicioIds?: string[];
 
   @IsOptional()
+  @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateEjercicioDto)
   nuevosEjercicios?: CreateEjercicioDto[];

@@ -1,4 +1,4 @@
-import { IsString, IsBoolean, IsOptional, IsArray, ValidateNested, IsISO8601, IsNumber } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsArray, ValidateNested, IsISO8601, IsNumber, IsUUID } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { Type } from 'class-transformer';
 
@@ -43,10 +43,10 @@ export class CreateActividadDto {
     if (typeof value !== 'string') return value;
     const v = value.trim();
     if (v === '') return undefined;
-    // If already an ISO string with Z or offset, keep it
+    // Si ya es un string ISO con Z o offset, mantenerlo
     if (v.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(v)) return v;
     const parsed = new Date(v);
-    if (isNaN(parsed.getTime())) return v; // let validator handle the error
+    if (isNaN(parsed.getTime())) return v; // dejar que el validador maneje el error
     return parsed.toISOString();
   })
   @IsISO8601()
@@ -66,14 +66,16 @@ export class CreateActividadDto {
   @IsISO8601()
   fechaFin?: string;
 
+  @IsOptional()
   @IsBoolean()
-  isVisible: boolean;
+  isVisible?: boolean;
 
   @IsOptional()
   @IsArray()
   ejercicioIds?: string[];
 
   @IsOptional()
+  @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateEjercicioDto)
   nuevosEjercicios?: CreateEjercicioDto[];
