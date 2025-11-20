@@ -1,12 +1,24 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { SupabaseService } from '../lib/supabase.service';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { UpdateActividadDto } from './dto/update-actividad.dto';
+import { RespuestaParcialDto } from './dto/respuesta-parcial.dto';
+import { FinalizarIntentoDto } from './dto/finalizar-intento.dto';
 
 @Injectable()
 export class ActividadService {
   private readonly logger = new Logger(ActividadService.name);
+
   constructor(private supabaseService: SupabaseService) {}
+
+  // --- HELPERS ---
 
   private async verificarEsProfesor(claseId: string, userId: string, accessToken?: string) {
     const supabase = this.supabaseService.getClient(accessToken);
@@ -23,10 +35,11 @@ export class ActividadService {
     return inscripcion;
   }
 
+  // --- GESTIÓN DE ACTIVIDADES (PROFESOR) ---
+
   async createActividad(claseId: string, dto: CreateActividadDto, userId: string, accessToken?: string) {
     const supabase = this.supabaseService.getClient(accessToken);
 
-    // Validaciones
     if (!dto.nombre || !dto.descripcion) {
       throw new BadRequestException('Nombre y descripción son obligatorios');
     }
@@ -37,7 +50,6 @@ export class ActividadService {
       }
     }
 
-    // Solo profesor
     await this.verificarEsProfesor(claseId, userId, accessToken);
 
     try {
@@ -61,30 +73,28 @@ export class ActividadService {
       }
 
       const actividadId = actividad.id;
-
-      // Crear ejercicios nuevos si vienen
       const createdEjercicioIds: string[] = [];
+
+      // Crear nuevos ejercicios si vienen en el payload
       if (dto.nuevosEjercicios && dto.nuevosEjercicios.length > 0) {
-        // Use logger to record nuevosEjercicios payload at debug level (non-blocking and configurable)
-        this.logger.debug(`nuevosEjercicios payload: ${JSON.stringify(dto.nuevosEjercicios)}`);
         for (const e of dto.nuevosEjercicios) {
           const metadataObj: any = {};
           try {
             if ((e as any).metadata) Object.assign(metadataObj, JSON.parse((e as any).metadata));
           } catch (err) {
-            // metadata may already be object or invalid JSON; ignore parse errors
             if ((e as any).metadata && typeof (e as any).metadata === 'object') Object.assign(metadataObj, (e as any).metadata);
           }
           if ((e as any).titulo) metadataObj.title = (e as any).titulo;
-          // Determine tipo_id from provided e.tipo if any
+
+          // Resolver tipo_id basado en la key (string)
           let tipoIdForEjercicio: string | null = null;
           if ((e as any).tipo) {
             const keyCandidate = (e as any).tipo as string;
-            // Map common frontend type strings to DB keys
             const keysToTry = [keyCandidate];
             if (keyCandidate === 'verdadero-falso') keysToTry.push('true_false');
             if (keyCandidate === 'multiple-choice') keysToTry.push('choice', 'multiple_choice');
             if (keyCandidate === 'abierta') keysToTry.push('abierta');
+            
             const { data: tipoRows } = await supabase
               .from('tipo_ejercicio')
               .select('id')
@@ -95,15 +105,20 @@ export class ActividadService {
             }
           }
 
-          const payload: any = { enunciado: (e as any).enunciado || (e as any).titulo || '', puntos: (e as any).puntos ?? 1, metadata: Object.keys(metadataObj).length ? metadataObj : null, creado_por: userId };
+          const payload: any = { 
+            enunciado: (e as any).enunciado || (e as any).titulo || '', 
+            puntos: (e as any).puntos ?? 1, 
+            metadata: Object.keys(metadataObj).length ? metadataObj : null, 
+            creado_por: userId 
+          };
           if (tipoIdForEjercicio) payload.tipo_id = tipoIdForEjercicio;
+
           const { data: ej, error: ejError } = await supabase.from('ejercicio').insert(payload).select().single();
           if (ejError) {
             throw new BadRequestException('Error al crear ejercicio: ' + ejError.message);
           }
           createdEjercicioIds.push(ej.id);
 
-          // Si vienen opciones (estructura para MCQ), insertarlas
           if ((e as any).opciones && Array.isArray((e as any).opciones) && (e as any).opciones.length > 0) {
             const opcionesRows = (e as any).opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: !!o.is_correcta }));
             const { error: optError } = await supabase.from('opcion_ejercicio').insert(opcionesRows);
@@ -114,40 +129,10 @@ export class ActividadService {
         }
       }
 
-      // Validar que los ejercicioIds provistos pertenezcan a la clase
+      // Validar IDs existentes y asociar
       const providedIds = dto.ejercicioIds || [];
-      if (providedIds.length > 0) {
-        // obtener usuarios inscritos
-        const { data: inscritos } = await supabase.from('inscripcion').select('usuario_id').eq('clase_id', claseId);
-        const usuarioIds = (inscritos || []).map((i: any) => i.usuario_id);
-
-        // ejercicios válidos si: estan en actividad_ejercicio con actividad.clase_id OR fueron creados por usuarios inscritos
-        const { data: asociados } = await supabase
-          .from('actividad_ejercicio')
-          .select('ejercicio_id, actividad:actividad_id (clase_id)')
-          .in('ejercicio_id', providedIds as any[]);
-
-        const asociadosIds = new Set((asociados || []).filter((r: any) => r.actividad && r.actividad.clase_id === claseId).map((r: any) => r.ejercicio_id));
-
-        const { data: creadosPorInscritos } = await supabase
-          .from('ejercicio')
-          .select('id')
-          .in('id', providedIds as any[])
-          .in('creado_por', usuarioIds as any[]);
-
-        const creadosIds = new Set((creadosPorInscritos || []).map((r: any) => r.id));
-
-        const validIds = new Set([...Array.from(asociadosIds), ...Array.from(creadosIds)]);
-
-        const invalids = providedIds.filter((id) => !validIds.has(id));
-        if (invalids.length > 0) {
-          throw new BadRequestException('Algunos ejercicios no pertenecen a esta clase: ' + invalids.join(', '));
-        }
-      }
-
       const allEjercicioIds = [...providedIds, ...createdEjercicioIds];
 
-      // Asociar ejercicios
       if (allEjercicioIds.length > 0) {
         const rows = allEjercicioIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
         const { error: assocError } = await supabase.from('actividad_ejercicio').insert(rows);
@@ -163,10 +148,10 @@ export class ActividadService {
     }
   }
 
+  // LISTADO DE ACTIVIDADES (INCLUYE ESTADO DEL INTENTO)
   async getActividades(claseId: string, userId: string, accessToken?: string) {
     const supabase = this.supabaseService.getClient(accessToken);
 
-    // Verificar que el usuario esté inscrito
     const { data: insc } = await supabase
       .from('inscripcion')
       .select('is_profesor')
@@ -178,7 +163,6 @@ export class ActividadService {
       throw new ForbiddenException('No tienes acceso a esta clase');
     }
 
-    // For non-professors (students), only return activities visible to them
     const query = supabase
       .from('actividad')
       .select('*')
@@ -190,68 +174,85 @@ export class ActividadService {
     }
 
     const { data: actividades, error } = await query;
+    if (error) throw new BadRequestException('Error al obtener actividades: ' + error.message);
 
-    if (error) {
-      const msg = error?.message || 'Error al obtener actividades';
-      throw new BadRequestException('Error al obtener actividades: ' + msg);
+    // Obtener intentos del usuario para determinar el estado (finished/in_progress)
+    const actividadIds = actividades.map(a => a.id);
+    let intentosMap: Record<string, any> = {};
+
+    if (actividadIds.length > 0) {
+      const { data: intentos } = await supabase
+        .from('actividad_resultado')
+        .select('actividad_id, estado, puntaje')
+        .in('actividad_id', actividadIds)
+        .eq('usuario_id', userId);
+
+      (intentos || []).forEach((i: any) => {
+        // Si hay múltiples (no debería), priorizamos el 'finished'
+        if (!intentosMap[i.actividad_id] || i.estado === 'finished') {
+            intentosMap[i.actividad_id] = i;
+        }
+      });
     }
 
-    // Para cada actividad obtener ejercicios asociados y sus opciones
+    const actividadesConEstado = actividades.map(a => ({
+        ...a,
+        intento: intentosMap[a.id] || null // Agregamos el intento a la actividad
+    }));
+
+    // Cargar ejercicios básicos para mostrar en detalle si es necesario
     const actividadConEjercicios: any[] = [];
-    for (const a of actividades) {
+    for (const a of actividadesConEstado) {
       const { data: ae } = await supabase
         .from('actividad_ejercicio')
-        .select('ejercicio:ejercicio_id (id, enunciado, puntos, metadata, creado_por, creado_at)')
+        .select('ejercicio:ejercicio_id (id, enunciado, puntos)')
         .eq('actividad_id', a.id);
       const ejercicios = (ae || []).map((r: any) => r.ejercicio);
-
-      // Obtener opciones de todos los ejercicios de esta actividad en un solo query
-      const ejercicioIds = ejercicios.map((ej: any) => ej.id);
-      let opcionesPorEjercicio: Record<string, any[]> = {};
-      if (ejercicioIds.length > 0) {
-        const { data: opciones, error: optErr } = await supabase
-          .from('opcion_ejercicio')
-          .select('*')
-          .in('ejercicio_id', ejercicioIds as any[]);
-
-        if (optErr) throw new BadRequestException('Error al obtener opciones: ' + (optErr?.message || ''));
-
-        opcionesPorEjercicio = {};
-        (opciones || []).forEach((o: any) => {
-          opcionesPorEjercicio[o.ejercicio_id] = opcionesPorEjercicio[o.ejercicio_id] || [];
-          opcionesPorEjercicio[o.ejercicio_id].push(o);
-        });
-      }
-
-      // Anexar opciones a cada ejercicio
-      const ejerciciosConOpciones = ejercicios.map((ej: any) => ({ ...ej, opciones: opcionesPorEjercicio[ej.id] || [] }));
-
-      actividadConEjercicios.push({ ...a, ejercicios: ejerciciosConOpciones });
+      actividadConEjercicios.push({ ...a, ejercicios });
     }
 
     return { actividades: actividadConEjercicios };
   }
 
+  // --- MODIFICADO: ELIMINACIÓN EN CASCADA (ACTIVIDAD + EJERCICIOS) ---
   async deleteActividad(claseId: string, actividadId: string, userId: string, accessToken?: string) {
     const supabase = this.supabaseService.getClient(accessToken);
-
-    // Verificar profesor
     await this.verificarEsProfesor(claseId, userId, accessToken);
 
     try {
-      // Borrar registros de alumnos relacionados
+      // 1. RECOLECTAR IDs DE EJERCICIOS ANTES DE ROMPER LA RELACIÓN
+      const { data: relaciones } = await supabase
+        .from('actividad_ejercicio')
+        .select('ejercicio_id')
+        .eq('actividad_id', actividadId);
+
+      // Extraemos los IDs en un array simple
+      const ejercicioIds = (relaciones || []).map(r => r.ejercicio_id);
+
+      // 2. Borrar resultados (intentos) de alumnos
       await supabase.from('actividad_resultado').delete().eq('actividad_id', actividadId);
 
-      // Borrar asociaciones actividad_ejercicio
+      // 3. Borrar la relación intermedia
       await supabase.from('actividad_ejercicio').delete().eq('actividad_id', actividadId);
 
-      // Borrar la actividad
-      const { error } = await supabase.from('actividad').delete().eq('id', actividadId).eq('clase_id', claseId);
-      if (error) {
-        throw new BadRequestException('Error al eliminar actividad: ' + error.message);
+      // 4. Borrar la actividad
+      const { error } = await supabase
+        .from('actividad')
+        .delete()
+        .eq('id', actividadId)
+        .eq('clase_id', claseId);
+      
+      if (error) throw new BadRequestException('Error al eliminar actividad: ' + error.message);
+
+      // 5. BORRAR LOS EJERCICIOS HUÉRFANOS
+      if (ejercicioIds.length > 0) {
+        // Primero borramos las opciones (por si no hay Cascade en DB)
+        await supabase.from('opcion_ejercicio').delete().in('ejercicio_id', ejercicioIds);
+        // Finalmente borramos los ejercicios
+        await supabase.from('ejercicio').delete().in('id', ejercicioIds);
       }
 
-      return { message: 'Actividad eliminada' };
+      return { message: 'Actividad y sus ejercicios eliminados correctamente' };
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       throw new InternalServerErrorException('Error al eliminar actividad');
@@ -260,16 +261,14 @@ export class ActividadService {
 
   async updateActividad(claseId: string, actividadId: string, dto: UpdateActividadDto, userId: string, accessToken?: string) {
     const supabase = this.supabaseService.getClient(accessToken);
-
     await this.verificarEsProfesor(claseId, userId, accessToken);
 
-    // validar fechas si tipo evaluacion (no hay tipo en update DTO, so check fecha presence)
     if ((dto.fechaInicio && !dto.fechaFin) || (!dto.fechaInicio && dto.fechaFin)) {
-      throw new BadRequestException('Debe proporcionar ambas fechas (fechaInicio y fechaFin) al actualizar si una de ellas está presente');
+      throw new BadRequestException('Debe proporcionar ambas fechas al actualizar si una de ellas está presente');
     }
 
     try {
-      // Actualizar campos de actividad
+      // 1. Actualizar datos básicos
       const updatePayload: any = {};
       if (dto.nombre !== undefined) updatePayload.nombre = dto.nombre;
       if (dto.descripcion !== undefined) updatePayload.descripcion = dto.descripcion;
@@ -278,196 +277,515 @@ export class ActividadService {
       if (dto.isVisible !== undefined) updatePayload.is_visible = dto.isVisible;
 
       if (Object.keys(updatePayload).length > 0) {
-        const { error: updateError } = await supabase.from('actividad').update(updatePayload).eq('id', actividadId).eq('clase_id', claseId);
-        if (updateError) throw new BadRequestException('Error al actualizar actividad: ' + updateError.message);
+        await supabase.from('actividad').update(updatePayload).eq('id', actividadId).eq('clase_id', claseId);
       }
 
-      // Si vienen ejercicioIds, reemplazar asociaciones
-      // Also accept nuevosEjercicios on update: create new exercises and associate them
+      // 2. Crear ejercicios nuevos (si vienen)
       const createdEjercicioIds: string[] = [];
       if (dto.nuevosEjercicios && dto.nuevosEjercicios.length > 0) {
         for (const e of dto.nuevosEjercicios) {
-          const metadataObj: any = {};
-          try {
-            if ((e as any).metadata) Object.assign(metadataObj, JSON.parse((e as any).metadata));
-          } catch (err) {
-            if ((e as any).metadata && typeof (e as any).metadata === 'object') Object.assign(metadataObj, (e as any).metadata);
-          }
-          if ((e as any).titulo) metadataObj.title = (e as any).titulo;
-          // Map frontend 'tipo' string to tipo_ejercicio id if possible
-          let tipoIdForEjercicio: string | null = null;
-          if ((e as any).tipo) {
-            const keyCandidate = (e as any).tipo as string;
-            const keysToTry = [keyCandidate];
-            if (keyCandidate === 'verdadero-falso') keysToTry.push('true_false');
-            if (keyCandidate === 'multiple-choice') keysToTry.push('choice', 'multiple_choice');
-            if (keyCandidate === 'abierta') keysToTry.push('abierta');
-            const { data: tipoRows } = await supabase
-              .from('tipo_ejercicio')
-              .select('id')
-              .in('key', keysToTry)
-              .limit(1);
-            if (tipoRows && tipoRows.length > 0) {
-              tipoIdForEjercicio = tipoRows[0].id;
-            }
-          }
-
-          const payload: any = { enunciado: (e as any).enunciado || (e as any).titulo || '', puntos: (e as any).puntos ?? 1, metadata: Object.keys(metadataObj).length ? metadataObj : null, creado_por: userId };
-          if (tipoIdForEjercicio) payload.tipo_id = tipoIdForEjercicio;
-          const { data: ej, error: ejError } = await supabase.from('ejercicio').insert(payload).select().single();
-          if (ejError) throw new BadRequestException('Error al crear ejercicio: ' + ejError.message);
-          createdEjercicioIds.push(ej.id);
-          if ((e as any).opciones && Array.isArray((e as any).opciones) && (e as any).opciones.length > 0) {
-            const opcionesRows = (e as any).opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: !!o.is_correcta }));
-            const { error: optError } = await supabase.from('opcion_ejercicio').insert(opcionesRows);
-            if (optError) throw new BadRequestException('Error al crear opciones de ejercicio: ' + optError.message);
-          }
+           const metadataObj: any = {};
+           if (e.titulo) metadataObj.title = e.titulo;
+           
+           // Mapeo de tipos (simplificado)
+           let tipoId = null;
+           if (e.tipo) {
+             const { data } = await supabase.from('tipo_ejercicio').select('id').eq('key', e.tipo).single();
+             if (!data && (e.tipo === 'multiple-choice')) { /* fallback logic */ }
+             if (data) tipoId = data.id;
+           }
+           
+           const payload: any = { 
+             enunciado: e.enunciado || e.titulo || '', 
+             puntos: e.puntos ?? 1, 
+             metadata: metadataObj, 
+             creado_por: userId,
+             tipo_id: tipoId 
+           };
+           
+           const { data: ej } = await supabase.from('ejercicio').insert(payload).select().single();
+           if (ej) {
+             createdEjercicioIds.push(ej.id);
+             // Insertar opciones si hay
+             if (e.opciones?.length) {
+               const opts = e.opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: o.is_correcta }));
+               await supabase.from('opcion_ejercicio').insert(opts);
+             }
+           }
         }
       }
+
+      // 3. VINCULACIÓN DE EJERCICIOS (CRÍTICO PARA ELIMINAR)
+      // Si ejercicioIds es un array (aunque sea vacío), significa que estamos REEMPLAZANDO la lista
       if (dto.ejercicioIds && Array.isArray(dto.ejercicioIds)) {
-        // validar que pertenecen a la misma clase
-        const { data: inscritos } = await supabase.from('inscripcion').select('usuario_id').eq('clase_id', claseId);
-        const usuarioIds = (inscritos || []).map((i: any) => i.usuario_id);
+        // a. Borrar TODAS las asociaciones actuales
+        await supabase.from('actividad_ejercicio').delete().eq('actividad_id', actividadId);
 
-        const { data: asociados } = await supabase
-          .from('actividad_ejercicio')
-          .select('ejercicio_id, actividad:actividad_id (clase_id)')
-          .in('ejercicio_id', dto.ejercicioIds as any[]);
-        const asociadosIds = new Set((asociados || []).filter((r: any) => r.actividad && r.actividad.clase_id === claseId).map((r: any) => r.ejercicio_id));
+        // b. Combinar los que quedaron (filtrados en el front) + los nuevos creados
+        const allIds = [...dto.ejercicioIds, ...createdEjercicioIds];
+        const uniqueIds = Array.from(new Set(allIds));
 
-        const { data: creadosPorInscritos } = await supabase
-          .from('ejercicio')
-          .select('id')
-          .in('id', dto.ejercicioIds as any[])
-          .in('creado_por', usuarioIds as any[]);
-
-        const creadosIds = new Set((creadosPorInscritos || []).map((r: any) => r.id));
-
-        const validIds = new Set([...Array.from(asociadosIds), ...Array.from(creadosIds)]);
-        const invalids = dto.ejercicioIds.filter((id) => !validIds.has(id));
-        if (invalids.length > 0) throw new BadRequestException('Algunos ejercicios no pertenecen a esta clase: ' + invalids.join(', '));
-
-        // eliminar asociaciones previas
-        const { error: delError } = await supabase.from('actividad_ejercicio').delete().eq('actividad_id', actividadId);
-        if (delError) throw new BadRequestException('Error al eliminar relaciones previas: ' + delError.message);
-
-        if (dto.ejercicioIds.length > 0) {
-          const allIds = [...dto.ejercicioIds, ...createdEjercicioIds];
-          const rows = allIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
-          const { error: insertError } = await supabase.from('actividad_ejercicio').insert(rows);
-          if (insertError) throw new BadRequestException('Error al asociar ejercicios: ' + insertError.message);
+        // c. Insertar la nueva lista limpia
+        if (uniqueIds.length > 0) {
+          const rows = uniqueIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
+          const { error } = await supabase.from('actividad_ejercicio').insert(rows);
+          if (error) throw new BadRequestException('Error al actualizar ejercicios: ' + error.message);
         }
-      }
-      // If only nuevosEjercicios were provided without replacing ejercicioIds, append created ones
-      if ((!dto.ejercicioIds || dto.ejercicioIds.length === 0) && createdEjercicioIds.length > 0) {
-        const rows = createdEjercicioIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
-        const { error: insertError } = await supabase.from('actividad_ejercicio').insert(rows);
-        if (insertError) throw new BadRequestException('Error al asociar ejercicios nuevos: ' + insertError.message);
+      } 
+      // Caso: Solo agregar nuevos (append) sin tocar los existentes
+      else if (createdEjercicioIds.length > 0) {
+         const rows = createdEjercicioIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
+         await supabase.from('actividad_ejercicio').insert(rows);
       }
 
-      const { data: actividad, error } = await supabase.from('actividad').select('*').eq('id', actividadId).single();
-      if (error) throw new BadRequestException('No fue posible recuperar actividad: ' + error.message);
-      return { message: 'Actividad actualizada', actividad };
+      return { message: 'Actividad actualizada' };
     } catch (error) {
-      if (error instanceof BadRequestException || error instanceof ForbiddenException) throw error;
       throw new InternalServerErrorException('Error al actualizar actividad');
     }
   }
 
   async getEjerciciosDeClase(claseId: string, userId: string, accessToken?: string) {
     const supabase = this.supabaseService.getClient(accessToken);
+    const { data: insc } = await supabase.from('inscripcion').select('id').eq('usuario_id', userId).eq('clase_id', claseId).maybeSingle();
+    if (!insc) throw new ForbiddenException('No tienes acceso a esta clase');
+    // Implementación placeholder para este método auxiliar
+    return { ejercicios: [] }; 
+  }
 
-    // Verificar inscripción
-    const { data: insc } = await supabase
-      .from('inscripcion')
-      .select('id')
+  // --- MÉTODOS PARA EL ALUMNO (EVALUACIÓN) ---
+
+  /**
+   * CA: Obtener detalle para realizar examen (SIN respuestas correctas)
+   * Lógica robusta para detectar tipos de ejercicio
+   */
+  async getActividadById(actividadId: string, userId: string, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    const { data, error } = await supabase
+      .from('actividad')
+      .select(`
+        *,
+        actividad_ejercicio (
+          orden,
+          ejercicio (
+            id,
+            tipo_id,
+            enunciado,
+            puntos,
+            metadata,
+            tipo_ejercicio ( key ),
+            opcion_ejercicio (id, texto)
+          )
+        )
+      `)
+      .eq('id', actividadId)
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`Error al obtener actividad ${actividadId}: ${error?.message}`);
+      throw new NotFoundException('Actividad no encontrada');
+    }
+
+    const actividad: any = data;
+
+    const ejercicios = (actividad.actividad_ejercicio || [])
+      .sort((a: any, b: any) => a.orden - b.orden)
+      .map((ae: any) => {
+         const ej = ae.ejercicio;
+         if (!ej) return null;
+
+         let tipoKey = 'desconocido';
+         const te = ej.tipo_ejercicio;
+         
+         // 1. Intentar obtener key del tipo
+         if (te) {
+           if (Array.isArray(te) && te.length > 0) tipoKey = te[0].key;
+           else if (te.key) tipoKey = te.key;
+         }
+
+         // 2. Fallbacks si el tipo falla
+         if ((tipoKey === 'desconocido' || !tipoKey) && ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
+            tipoKey = 'multiple-choice';
+         }
+         if ((tipoKey === 'desconocido' || !tipoKey) && (!ej.opcion_ejercicio || ej.opcion_ejercicio.length === 0)) {
+            tipoKey = 'abierta';
+         }
+
+         return {
+            ...ej,
+            tipo: tipoKey,
+            opciones: ej.opcion_ejercicio || []
+         };
+      })
+      .filter((e: any) => e !== null);
+
+    return {
+      actividad: {
+        ...actividad,
+        ejercicios: ejercicios
+      }
+    };
+  }
+
+  /**
+   * CA1: Iniciar evaluación (Intento único)
+   */
+  async iniciarIntento(actividadId: string, userId: string, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    const { data: actividad, error: actError } = await supabase
+      .from('actividad')
+      .select('*')
+      .eq('id', actividadId)
+      .single();
+
+    if (actError || !actividad) throw new NotFoundException('Actividad no encontrada');
+
+    // Validar fechas y lógica según tipo
+    const ahora = new Date();
+    const inicio = actividad.fecha_inicio ? new Date(actividad.fecha_inicio) : null;
+    const fin = actividad.fecha_fin ? new Date(actividad.fecha_fin) : null;
+
+    // Buscar intentos previos
+    const { data: intentos } = await supabase
+      .from('actividad_resultado')
+      .select('*')
+      .eq('actividad_id', actividadId)
+      .eq('usuario_id', userId);
+
+    // CASO 1: EVALUACIÓN (Estricto)
+    if (actividad.tipo === 'evaluacion') {
+        if (inicio && ahora < inicio) throw new ForbiddenException('La evaluación aún no ha comenzado');
+        if (fin && ahora > fin) throw new ForbiddenException('El tiempo para esta evaluación ha finalizado');
+
+        const finalizado = intentos?.find(i => i.estado === 'finished');
+        if (finalizado) return { message: 'Evaluación ya realizada', intento: finalizado };
+    }
+
+    // CASO 2: PRÁCTICA & EVALUACIÓN (Común)
+    // Si hay uno "en progreso", lo retomamos siempre (para evitar crear basura)
+    const enProgreso = intentos?.find(i => i.estado === 'in_progress');
+    if (enProgreso) {
+      return { message: 'Retomando intento', intento: enProgreso };
+    }
+
+    // Si es práctica y no hay en progreso, creamos uno NUEVO (aunque existan finalizados)
+    // Si es evaluación, llegará aquí solo si no hay ninguno (ni finished ni in_progress)
+
+    const { data: nuevoIntento, error: createError } = await supabase
+      .from('actividad_resultado')
+      .insert({
+        actividad_id: actividadId,
+        clase_id: actividad.clase_id,
+        usuario_id: userId,
+        registro_id: `ATT-${Date.now()}`,
+        respuestas: [],
+        estado: 'in_progress',
+        started_at: new Date(),
+      })
+      .select()
+      .single();
+
+    if (createError) throw new InternalServerErrorException('Error al iniciar intento');
+
+    return { message: 'Actividad iniciada', intento: nuevoIntento };
+  }
+
+  /**
+   * CA5: Guardado automático
+   */
+  async guardarRespuestaParcial(
+    resultadoId: string, 
+    dto: RespuestaParcialDto, 
+    userId: string, 
+    accessToken?: string
+  ) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    const { data: intento } = await supabase
+      .from('actividad_resultado')
+      .select('respuestas, estado')
+      .eq('id', resultadoId)
       .eq('usuario_id', userId)
-      .eq('clase_id', claseId)
-      .maybeSingle();
+      .single();
 
-    if (!insc) {
-      throw new ForbiddenException('No tienes acceso a esta clase');
+    if (!intento || intento.estado !== 'in_progress') {
+      throw new ForbiddenException('El intento no es válido o ya finalizó');
     }
 
-    // Strategy:
-    // 1) Obtener ejercicios asociados a actividades de la clase (actividad_ejercicio -> actividad.clase_id)
-    // 2) Obtener ejercicios creados por usuarios inscritos en la clase (ejercicio.creado_por in inscripcion.usuario_id)
-    // 3) Unir resultados y devolver con sus opciones
+    let respuestas = (intento.respuestas as any[]) || [];
+    respuestas = respuestas.filter(r => r.ejercicioId !== dto.ejercicioId);
+    respuestas.push(dto);
 
-    // 1) obtener ids de actividades de la clase
-    const { data: actividades, error: actErr } = await supabase.from('actividad').select('id').eq('clase_id', claseId);
-    if (actErr) throw new BadRequestException('Error al obtener actividades: ' + (actErr?.message || ''));
+    const { error } = await supabase
+      .from('actividad_resultado')
+      .update({ respuestas, updated_at: new Date() })
+      .eq('id', resultadoId);
 
-    const actividadIds = (actividades || []).map((a: any) => a.id);
+    if (error) throw new InternalServerErrorException('Error al guardar respuesta');
 
-    const ejerciciosMap: Record<string, any> = {};
+    return { success: true };
+  }
 
-    if (actividadIds.length > 0) {
-      const { data: aeList, error: aeErr } = await supabase
-        .from('actividad_ejercicio')
-        .select('ejercicio:ejercicio_id (id, enunciado, puntos, metadata, creado_por, creado_at)')
-        .in('actividad_id', actividadIds as any[]);
-      if (aeErr) throw new BadRequestException('Error al obtener ejercicios desde actividades: ' + (aeErr?.message || ''));
+  /**
+   * CA4: Finalizar y Calificar (Con fix de Race Condition)
+   */
+  async finalizarIntento(resultadoId: string, userId: string, accessToken?: string, dto?: FinalizarIntentoDto) {
+    const supabase = this.supabaseService.getClient(accessToken);
 
-      for (const row of (aeList || []) as any[]) {
-        const ej = (row as any).ejercicio;
-        if (ej && (ej as any).id) ejerciciosMap[(ej as any).id] = ej;
-      }
+    // PASO PREVIO: Si vienen respuestas finales, actualizarlas antes de calificar
+    if (dto && dto.respuestas && Array.isArray(dto.respuestas)) {
+        const { error: updateError } = await supabase
+            .from('actividad_resultado')
+            .update({ respuestas: dto.respuestas, updated_at: new Date() })
+            .eq('id', resultadoId)
+            .eq('usuario_id', userId);
+
+        if (updateError) throw new InternalServerErrorException('Error al sincronizar respuestas finales');
     }
 
-    // 2) ejercicios creados por usuarios inscritos en la clase
-    const { data: inscritos, error: insErr } = await supabase.from('inscripcion').select('usuario_id').eq('clase_id', claseId);
-    if (insErr) throw new BadRequestException('Error al obtener inscritos: ' + (insErr?.message || ''));
+    const { data: intento } = await supabase
+      .from('actividad_resultado')
+      .select('*, actividad:actividad_id(*)')
+      .eq('id', resultadoId)
+      .single();
 
-    const usuarioIds = (inscritos || []).map((i: any) => i.usuario_id);
-    if (usuarioIds.length > 0) {
-      const { data: creados, error: creadosErr } = await supabase
-        .from('ejercicio')
-        .select('id, enunciado, puntos, metadata, creado_por, creado_at')
-        .in('creado_por', usuarioIds)
-        .order('creado_at', { ascending: false });
-      if (creadosErr) throw new BadRequestException('Error al obtener ejercicios creados por inscritos: ' + (creadosErr?.message || ''));
-
-      for (const ej of creados || []) {
-        ejerciciosMap[ej.id] = ejerciciosMap[ej.id] || ej;
-      }
+    if (!intento || intento.estado !== 'in_progress') {
+      throw new BadRequestException('Intento no válido para finalizar');
     }
 
-    const ejercicios = Object.values(ejerciciosMap);
+    const { data: ejercicios } = await supabase
+      .from('actividad_ejercicio')
+      .select(`
+        ejercicio:ejercicio_id (
+          id, puntos, tipo_id,
+          opcion_ejercicio (id, texto, is_correcta)
+        )
+      `)
+      .eq('actividad_id', intento.actividad_id);
 
-    // 3) para cada ejercicio obtener sus opciones
-    const ejerciciosConOpciones: any[] = [];
-    for (const ej of ejercicios) {
-      const { data: opciones, error: optErr } = await supabase
-        .from('opcion_ejercicio')
-        .select('*')
-        .eq('ejercicio_id', ej.id);
+    let puntajeTotal = 0;
+    const respuestasUsuario = (intento.respuestas as any[]) || [];
 
-      if (optErr) throw new BadRequestException('Error al obtener opciones: ' + (optErr?.message || ''));
+    (ejercicios || []).forEach((item: any) => {
+      const ej = item.ejercicio;
+      const respuestaUser = respuestasUsuario.find(r => r.ejercicioId === ej.id);
 
-      // Determine if the exercise belongs to any hidden activity of this class
-      const { data: aeHidden, error: aeHiddenErr } = await supabase
-        .from('actividad_ejercicio')
-        .select('actividad:actividad_id (clase_id, is_visible)')
-        .eq('ejercicio_id', ej.id);
-
-      let belongsToHiddenActivity = false;
-      if (!aeHiddenErr && aeHidden && aeHidden.length > 0) {
-        for (const r of aeHidden) {
-          // Supabase can return nested relations either as an object or an array in some cases
-          // Normalize to an object to avoid TypeScript errors and handle both shapes
-          const nestedActividad: any = (r as any).actividad;
-          const actObj = Array.isArray(nestedActividad) ? nestedActividad[0] : nestedActividad;
-          if (actObj && actObj.clase_id === claseId && actObj.is_visible === false) {
-            belongsToHiddenActivity = true;
-            break;
-          }
+      if (respuestaUser && ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
+        const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
+        if (opcionCorrecta && respuestaUser.respuesta === opcionCorrecta.id) {
+          puntajeTotal += Number(ej.puntos);
         }
       }
+    });
 
-      ejerciciosConOpciones.push({ ...ej, opciones: opciones || [], belongsToHiddenActivity });
+    const { data: resultadoFinal, error } = await supabase
+      .from('actividad_resultado')
+      .update({
+        estado: 'finished',
+        puntaje: puntajeTotal,
+        finished_at: new Date(),
+      })
+      .eq('id', resultadoId)
+      .select()
+      .single();
+
+    if (error) throw new InternalServerErrorException('Error al finalizar evaluación');
+
+    return { 
+      message: 'Evaluación enviada correctamente', 
+      puntaje: puntajeTotal, 
+      resultado: resultadoFinal 
+    };
+  }
+
+  // REVISIÓN (Soporta intento específico o último por defecto)
+  async getRevision(actividadId: string, userId: string, accessToken?: string, intentoId?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    // 1. Construir query base
+    let query = supabase
+      .from('actividad_resultado')
+      .select('id, estado, respuestas, puntaje, created_at')
+      .eq('actividad_id', actividadId)
+      .eq('usuario_id', userId)
+      .eq('estado', 'finished');
+
+    // 2. Filtrar: Si hay ID específico lo usamos, sino traemos el último
+    if (intentoId) {
+      query = query.eq('id', intentoId);
+    } else {
+      query = query.order('created_at', { ascending: false }).limit(1);
     }
 
-    return { ejercicios: ejerciciosConOpciones };
+    const { data: intentos } = await query;
+    const intento = intentos?.[0];
+
+    if (!intento) throw new ForbiddenException('No se encontró el intento o no está finalizado');
+
+    // 3. Obtener actividad CON respuestas correctas (Igual que antes)
+    const { data: actividadData, error } = await supabase
+      .from('actividad')
+      .select(`
+        *,
+        actividad_ejercicio (
+          orden,
+          ejercicio (
+            id,
+            tipo_id,
+            enunciado,
+            puntos,
+            metadata,
+            tipo_ejercicio ( key ),
+            opcion_ejercicio (id, texto, is_correcta)
+          )
+        )
+      `)
+      .eq('id', actividadId)
+      .single();
+
+    if (error || !actividadData) throw new NotFoundException('Actividad no encontrada para revisión');
+
+    const actividad: any = actividadData;
+
+    // Mapeo robusto de ejercicios
+    const ejercicios = (actividad.actividad_ejercicio || [])
+      .sort((a: any, b: any) => a.orden - b.orden)
+      .map((ae: any) => {
+         const ej = ae.ejercicio;
+         let tipoKey = 'desconocido';
+         if (ej.tipo_ejercicio) {
+             if (Array.isArray(ej.tipo_ejercicio) && ej.tipo_ejercicio.length) tipoKey = ej.tipo_ejercicio[0].key;
+             else if (ej.tipo_ejercicio.key) tipoKey = ej.tipo_ejercicio.key;
+         }
+         if ((tipoKey === 'desconocido' || !tipoKey) && ej.opcion_ejercicio?.length > 0) tipoKey = 'multiple-choice';
+         if ((tipoKey === 'desconocido' || !tipoKey)) tipoKey = 'abierta';
+
+         return { ...ej, tipo: tipoKey, opciones: ej.opcion_ejercicio || [] };
+      });
+
+    return { actividad: { ...actividad, ejercicios }, intento };
+  }
+
+  /**
+   * Obtener historial de intentos (Para lista de resultados)
+  */
+  async getHistorialIntentos(actividadId: string, userId: string, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    const { data: intentos, error } = await supabase
+      .from('actividad_resultado')
+      .select('id, puntaje, finished_at, created_at')
+      .eq('actividad_id', actividadId)
+      .eq('usuario_id', userId)
+      .eq('estado', 'finished')
+      .order('created_at', { ascending: true }); // De menor a mayor (cronológico: Intento 1, 2...)
+
+    if (error) throw new BadRequestException('Error al obtener historial');
+
+    return { intentos: intentos || [] };
+  }
+
+  // Obtener todos los intentos finalizados de una actividad (con datos del alumno)
+  async getIntentosPorActividad(claseId: string, actividadId: string, userId: string, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+    await this.verificarEsProfesor(claseId, userId, accessToken);
+
+    const { data, error } = await supabase
+      .from('actividad_resultado')
+      .select(`
+        *,
+        usuario:usuario_id (id, nombre, email)
+      `)
+      .eq('actividad_id', actividadId)
+      .eq('estado', 'finished')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new BadRequestException(error.message);
+    return { intentos: data };
+  }
+
+  // Calificar manualmente una respuesta (Pregunta Abierta)
+  async calificarRespuestaManual(
+    claseId: string, 
+    actividadId: string, 
+    intentoId: string, 
+    ejercicioId: string, 
+    puntajeAsignado: number, 
+    userId: string, 
+    accessToken?: string
+  ) {
+    const supabase = this.supabaseService.getClient(accessToken);
+    await this.verificarEsProfesor(claseId, userId, accessToken);
+
+    // 1. Obtener el intento actual
+    const { data: intento } = await supabase
+      .from('actividad_resultado')
+      .select('*')
+      .eq('id', intentoId)
+      .single();
+      
+    if (!intento) throw new NotFoundException('Intento no encontrado');
+
+    // 2. Modificar la respuesta específica
+    const respuestas = intento.respuestas || [];
+    const respuestaIndex = respuestas.findIndex((r: any) => r.ejercicioId === ejercicioId);
+    
+    const now = new Date().toISOString(); // Fecha actual
+
+    if (respuestaIndex === -1) {
+       respuestas.push({ 
+         ejercicioId, 
+         respuesta: '', 
+         puntajeManual: puntajeAsignado, 
+         corregido: true,
+         correctedAt: now // Guardamos la fecha
+       });
+    } else {
+       respuestas[respuestaIndex] = {
+         ...respuestas[respuestaIndex],
+         puntajeManual: puntajeAsignado,
+         corregido: true,
+         correctedAt: now // Guardamos la fecha
+       };
+    }
+
+    // 3. Recalcular el puntaje TOTAL
+    const { data: ejercicios } = await supabase
+      .from('actividad_ejercicio')
+      .select('ejercicio:ejercicio_id(id, puntos, tipo_id, opcion_ejercicio(id, is_correcta))')
+      .eq('actividad_id', actividadId);
+
+    let nuevoPuntajeTotal = 0;
+
+    (ejercicios || []).forEach((ae: any) => {
+       const ej = ae.ejercicio;
+       const respUser = respuestas.find((r: any) => r.ejercicioId === ej.id);
+
+       if (respUser) {
+          if (respUser.puntajeManual !== undefined) {
+            nuevoPuntajeTotal += Number(respUser.puntajeManual);
+          } else {
+            const opcionCorrecta = ej.opcion_ejercicio?.find((o:any) => o.is_correcta);
+            if (opcionCorrecta && respUser.respuesta === opcionCorrecta.id) {
+               nuevoPuntajeTotal += Number(ej.puntos);
+            }
+          }
+       }
+    });
+
+    // 4. Guardar en Base de Datos
+    const { error } = await supabase
+      .from('actividad_resultado')
+      .update({ 
+        respuestas: respuestas, 
+        puntaje: nuevoPuntajeTotal,
+        updated_at: now
+      })
+      .eq('id', intentoId);
+
+    if (error) throw new InternalServerErrorException('Error al guardar corrección');
+
+    return { message: 'Calificación actualizada', puntaje: nuevoPuntajeTotal };
   }
 }

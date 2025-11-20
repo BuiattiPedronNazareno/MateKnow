@@ -45,20 +45,24 @@ export class AnuncioController {
     );
   }
 
-  /**
+/**
    * GET /anuncios/clase/:claseId
-   * Obtener todos los anuncios de una clase
+   * Obtener anuncios paginados
    */
   @Get('clase/:claseId')
   @HttpCode(HttpStatus.OK)
   async getAnunciosByClase(
     @Param('claseId') claseId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number, // Nuevo
+    @Query('limit', new DefaultValuePipe(5), ParseIntPipe) limit: number, // Nuevo
     @Request() req,
   ) {
     return this.anuncioService.getAnunciosByClase(
       claseId,
       req.user.id,
       req.token,
+      page,
+      limit
     );
   }
 
