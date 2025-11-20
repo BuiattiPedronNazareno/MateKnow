@@ -67,14 +67,19 @@ export class AnuncioService {
   }
 
   /**
-   * CA4: Obtener todos los anuncios de una clase
-   * CA5: Ordenados del más reciente al más antiguo
+   * CA4: Obtener todos los anuncios de una clase (Paginado)
    */
-  async getAnunciosByClase(claseId: string, userId: string, accessToken?: string) {
+  async getAnunciosByClase(
+    claseId: string, 
+    userId: string, 
+    accessToken?: string,
+    page: number = 1,
+    limit: number = 5
+  ) {
     const supabase = this.supabaseService.getClient(accessToken);
 
     try {
-      // Verificar que el usuario está inscrito en la clase
+      // Verificar acceso
       const { data: inscripcion, error: inscError } = await supabase
         .from('inscripcion')
         .select('id')
@@ -86,8 +91,12 @@ export class AnuncioService {
         throw new ForbiddenException('No tienes acceso a esta clase');
       }
 
-      // CA5: Obtener anuncios ordenados por fecha descendente
-      const { data: anuncios, error } = await supabase
+      // Calcular rango
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
+      // Obtener anuncios paginados con conteo exacto
+      const { data: anuncios, error, count } = await supabase
         .from('anuncio')
         .select(`
           *,
@@ -97,9 +106,10 @@ export class AnuncioService {
             apellido,
             email
           )
-        `)
+        `, { count: 'exact' })
         .eq('clase_id', claseId)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .range(from, to);
 
       if (error) {
         throw new BadRequestException('Error al obtener anuncios');
@@ -107,6 +117,11 @@ export class AnuncioService {
 
       return {
         anuncios: anuncios.map((a) => this.formatAnuncio(a)),
+        meta: {
+          total: count,
+          page,
+          lastPage: Math.ceil((count || 0) / limit),
+        }
       };
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof BadRequestException) {
