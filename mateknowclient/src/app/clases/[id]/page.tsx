@@ -75,6 +75,7 @@ import EjercicioForm from '@/app/components/EjercicioForm';
 import { ejercicioService } from '@/app/services/ejercicioService';
 import OptionsEditor from '@/app/actividades/[claseId]/components/OptionsEditor';
 import { anuncioService, Anuncio, CreateAnuncioData, Comentario } from '@/app/services/anuncioService';
+import { SportsEsports } from '@mui/icons-material';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -576,7 +577,7 @@ export default function DetalleClasePage() {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 Código de clase
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
                 <Typography
                   variant="h4"
                   sx={{
@@ -591,6 +592,30 @@ export default function DetalleClasePage() {
                   <ContentCopy />
                 </IconButton>
               </Box>
+              
+              {/* BOTÓN MODO VERSUS */}
+              <Button
+                variant="contained"
+                startIcon={<SportsEsports />}
+                onClick={() => router.push(`/versus?claseId=${claseId}`)}
+                sx={{
+                  mt: 2,
+                  background: 'linear-gradient(135deg, #8B4513 0%, #D2691E 100%)',
+                  color: 'white',
+                  fontWeight: 600,
+                  borderRadius: 2,
+                  px: 3,
+                  boxShadow: '0 4px 15px rgba(139, 69, 19, 0.3)',
+                  '&:hover': {
+                    background: 'linear-gradient(135deg, #654321 0%, #A0522D 100%)',
+                    transform: 'scale(1.02)',
+                    boxShadow: '0 6px 20px rgba(139, 69, 19, 0.4)',
+                  },
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                Modo Versus
+              </Button>
             </Box>
           </Box>
           

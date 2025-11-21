@@ -1,0 +1,124 @@
+// Cargar Socket.IO desde CDN
+const script = document.createElement('script');
+script.src = 'https://cdn.socket.io/4.7.2/socket.io.min.js';
+script.onload = () => {
+  console.log('✅ Socket.IO cargado');
+  
+  // Obtener token del localStorage
+  const token = localStorage.getItem('access_token');
+  console.log('🔑 Token:', token ? 'Encontrado' : 'NO ENCONTRADO');
+  
+  if (!token) {
+    console.error('❌ No hay token. Haz login primero.');
+    return;
+  }
+  
+  // Conectar al WebSocket
+  console.log('🔌 Conectando a ws://localhost:4000/versus...');
+  
+  const socket = io('http://localhost:4000/versus', {
+    query: { token },
+    transports: ['websocket', 'polling']
+  });
+
+  socket.on('connect', () => {
+    console.log('✅ Socket conectado! ID:', socket.id);
+  });
+
+  socket.on('connected', (data) => {
+    console.log('🎉 MENSAJE DEL SERVIDOR:', data);
+  });
+
+  socket.on('error', (err) => {
+    console.error('❌ Error del servidor:', err);
+  });
+
+  socket.on('connect_error', (err) => {
+    console.error('❌ Error de conexión:', err.message);
+    console.error('Detalles:', err);
+  });
+  
+  socket.on('disconnect', (reason) => {
+    console.warn('⚠️ Desconectado:', reason);
+  });
+  
+  // Guardar referencia global para pruebas
+  window.testSocket = socket;
+  console.log('💾 Socket guardado en window.testSocket');
+};
+
+script.onerror = () => {
+  console.error('❌ Error cargando Socket.IO desde CDN');
+};
+
+document.head.appendChild(script);
+SCRIPT 2:
+
+// Buscar partida
+window.testSocket.emit('search-match', {});
+
+// Escuchar respuesta
+window.testSocket.on('searching', (data) => {
+  console.log('🔍 Buscando partida:', data);
+});
+
+window.testSocket.on('match-found', (data) => {
+  console.log('🎯 PARTIDA ENCONTRADA!', data);
+});
+
+
+SCRIPT 3 (turno):
+
+// Seleccionar la primera pregunta (q1)
+window.testSocket.emit('select-question', {
+  lobbyId: 'lobby_1763506278398_zddfjkzwk',
+  questionId: 'q1'
+});
+
+// Escuchar respuesta
+window.testSocket.on('question-selected', (data) => {
+  console.log('✅ Pregunta seleccionada:', data);
+});
+
+window.testSocket.on('opponent-selected', (data) => {
+  console.log('👤 Tu rival seleccionó:', data);
+});
+
+SCRIPT 3 (sin turno)
+
+window.testSocket.on('question-selected', (data) => {
+  console.log('✅ Pregunta seleccionada:', data);
+});
+
+window.testSocket.on('opponent-selected', (data) => {
+  console.log('👤 Tu rival seleccionó:', data);
+});
+
+
+SCRIPT 4 (turno)
+
+window.testSocket.emit('select-question', { lobbyId: 'lobby_1763506278398_zddfjkzwk', questionId: 'q1' });
+
+SCRIPT 4 (sin turno)
+
+window.testSocket.emit('select-question', { lobbyId: 'lobby_1763506278398_zddfjkzwk', questionId: 'q5' });
+
+
+
+
+
+
+
+Ranking de la clase? metricas
+
+menu especial cuando alguien abandona.
+
+boton de jugar otra vez, que pasa exactamente
+
+Mas tipos de ejercicios
+
+cuando terminas de responder, pestaña de espera
+
+Cuando el rival abandona, no se vuelve a la pestaña de clase
+
+cuando se crea una lobby, no importa en que clase estes, siempre aparecen las mismas preguntas
