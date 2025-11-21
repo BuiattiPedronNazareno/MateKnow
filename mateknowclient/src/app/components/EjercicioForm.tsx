@@ -217,7 +217,6 @@ export default function EjercicioForm({
         />
       </Box>
 
-      {/* 🔥 Editor LaTeX SIN título */}
       {tipoSeleccionado?.key === "latex" ? (
         <EjercicioLatexEditor
           value={{ enunciado }}
@@ -235,7 +234,6 @@ export default function EjercicioForm({
         />
       )}
 
-      {/* 🔥 Opciones SIEMPRE visibles (incluye LaTeX) */}
       <FormControlLabel
         control={
           <Switch
@@ -273,13 +271,15 @@ export default function EjercicioForm({
                 mb: 2,
               }}
             >
-              <FormControlLabel value={i.toString()} control={<Radio />} />
+              <Radio value={i.toString()} />
+              
               <TextField
                 value={op.texto}
                 onChange={(ev) =>
                   handleOpcionChange(i, "texto", ev.target.value)
                 }
                 fullWidth
+                placeholder={`Opción ${i + 1}`}
               />
             </Box>
           ))}
