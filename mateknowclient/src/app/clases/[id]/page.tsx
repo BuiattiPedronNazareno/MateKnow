@@ -63,7 +63,8 @@ import {
   History, 
   RestartAlt,
   Assignment, 
-  RateReview
+  RateReview,
+  EventBusy,
 } from '@mui/icons-material';
 
 import { claseService, ClaseDetalle } from '@/app/services/claseService';
@@ -91,6 +92,10 @@ function TabPanel(props: TabPanelProps) {
 }
 
 export default function DetalleClasePage() {
+  const [openExpiredDialog, setOpenExpiredDialog] = useState(false);
+  const [expiredActivityDate, setExpiredActivityDate] = useState<string | null>(null);
+  const [openNotAttemptedDialog, setOpenNotAttemptedDialog] = useState(false);
+
   const router = useRouter();
   const params = useParams();
   const claseId = params.id as string;
@@ -154,7 +159,7 @@ export default function DetalleClasePage() {
   const [openHistorialDialog, setOpenHistorialDialog] = useState(false);
   const [historialLoading, setHistorialLoading] = useState(false);
   const [historialData, setHistorialData] = useState<any[]>([]);
-  const [historialActividadId, setHistorialActividadId] = useState<string | null>(null); 
+  const [historialActividadId, setHistorialActividadId] = useState<string>('');
 
   const handleOpenHistorial = async (actividadId: string) => {
     setHistorialActividadId(actividadId); 
@@ -797,101 +802,143 @@ export default function DetalleClasePage() {
             ) : actividades.length === 0 ? (
               <Typography color="text.secondary" sx={{ textAlign: 'center', mt: 4 }}>No hay actividades aún.</Typography>
             ) : (
-              <List>
-                {actividades.map((a) => (
-                  <ListItem key={a.id} disablePadding sx={{ borderBottom: '1px solid #eee', ...(a.is_visible ? {} : { backgroundColor: 'rgba(255,152,0,0.06)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }) }}>
-                    <ListItemButton onClick={() => {
-                        if (!clase.isProfesor) {
-                           router.push(`/actividades/${claseId}/realizar/${a.id}`);
-                        } else {
-                           router.push(`/actividades/${claseId}/ver/${a.id}`);
-                        }
-                      }}>
-                      <ListItemText primary={a.nombre} secondary={a.descripcion} sx={!a.is_visible ? { color: 'warning.main' } : {}} />
+            <List>
+              {actividades.map((a) => (
+                <ListItem key={a.id} disablePadding sx={{ borderBottom: '1px solid #eee', ...(a.is_visible ? {} : { backgroundColor: 'rgba(255,152,0,0.06)', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }) }}>
+                  <ListItemButton 
+                    onClick={() => {
+                      if (!clase.isProfesor) {
+                         // LÓGICA DE ACCESO ALUMNO
+                         const now = new Date();
+                         const fechaFin = a.fecha_fin ? new Date(a.fecha_fin) : null;
+                         const isExpired = a.tipo === 'evaluacion' && fechaFin && now > fechaFin;
+                         const isFinished = a.intento?.estado === 'finished';
+                         const hasAttempt = !!a.intento;
+
+                         // CASO 1: Vencida y NUNCA se intentó -> Mostrar aviso "No intentado"
+                         if (isExpired && !hasAttempt) {
+                            setOpenNotAttemptedDialog(true);
+                            return;
+                         }
+
+                         // CASO 2: Vencida y quedó Incompleta (In Progress) -> Mostrar aviso "Vencida"
+                         if (isExpired && !isFinished && hasAttempt) {
+                            setExpiredActivityDate(a.fecha_fin);
+                            setOpenExpiredDialog(true);
+                            return;
+                         }
+
+                         // CASO 3: Habilitada (Vigente o Terminada) -> Navegar
+                         router.push(`/actividades/${claseId}/realizar/${a.id}`);
+                      } else {
+                         // PROFESOR -> Ver detalle
+                         router.push(`/actividades/${claseId}/ver/${a.id}`);
+                      }
+                    }}
+                    sx={{ cursor: 'pointer' }}
+                  >
+                    <ListItemText primary={a.nombre} secondary={a.descripcion} sx={!a.is_visible ? { color: 'warning.main' } : {}} />
+                    
+                    <Box sx={{ ml: 2, textAlign: 'right', display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {a.tipo === 'evaluacion' && <Chip label="Evaluación" size="small" />}
+                      {a.tipo === 'practica' && <Chip label="Práctica" size="small" variant="outlined" />}
                       
-                      <Box sx={{ ml: 2, textAlign: 'right', display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {a.tipo === 'evaluacion' && <Chip label="Evaluación" size="small" />}
-                        {a.tipo === 'practica' && <Chip label="Práctica" size="small" variant="outlined" />}
-                        
-                        {/* --- BOTONES DINÁMICOS ALUMNO --- */}
-                        {!clase.isProfesor && (
-                          <>
-                             {/* EVALUACIÓN */}
-                             {a.tipo === 'evaluacion' && (
-                               a.intento?.estado === 'finished' ? (
-                                  <Button variant="contained" size="small" startIcon={<Visibility />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/realizar/${a.id}`); }} sx={{ background: 'linear-gradient(135deg, #F57C00 0%, #FF9800 100%)' }}>Ver Resultado</Button>
-                               ) : (
-                                  <Button variant="contained" size="small" startIcon={<PlayArrow />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/realizar/${a.id}`); }} sx={{ background: 'linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)' }}>{a.intento?.estado === 'in_progress' ? 'Continuar' : 'Realizar'}</Button>
-                               )
-                             )}
+                      {/* --- BOTONES DINÁMICOS ALUMNO --- */}
+                      {!clase.isProfesor && (
+                        <>
+                           {/* EVALUACIÓN */}
+                           {a.tipo === 'evaluacion' && (() => {
+                              const now = new Date();
+                              const fechaFin = a.fecha_fin ? new Date(a.fecha_fin) : null;
+                              const isExpired = fechaFin && now > fechaFin;
+                              const isFinished = a.intento?.estado === 'finished';
+                              const hasAttempt = !!a.intento;
 
-                             {/* PRÁCTICA */}
-                             {a.tipo === 'practica' && (
-                               a.intento?.estado === 'in_progress' ? (
-                                  <Button variant="contained" size="small" startIcon={<PlayArrow />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/realizar/${a.id}`); }} sx={{ bgcolor: '#1976D2' }}>Continuar</Button>
-                               ) : (
-                                  a.intento?.estado === 'finished' ? (
-                                    <>
-                                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenHistorial(a.id); }} title="Ver historial" sx={{ color: '#8B4513', border: '1px solid #8B4513', mr: 1 }}>
-                                        <History fontSize="small" />
-                                      </IconButton>
-                                      <Button variant="contained" size="small" startIcon={<RestartAlt />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/realizar/${a.id}`); }} sx={{ bgcolor: '#2E7D32' }}>Volver a Realizar</Button>
-                                    </>
-                                  ) : (
-                                    <Button variant="contained" size="small" startIcon={<PlayArrow />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/realizar/${a.id}`); }} sx={{ background: 'linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)' }}>Realizar</Button>
-                                  )
-                               )
-                             )}
-                          </>
-                        )}
+                              // SI YA TERMINÓ O SI YA VENCIÓ -> VER RESULTADO
+                              if (isFinished || isExpired) {
+                                return (
+                                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                    {/* Leyenda "No intentado" */}
+                                    {isExpired && !hasAttempt && (
+                                       <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: 'bold', mr: 1.5, border: '1px solid #D32F2F', borderRadius: 1, px: 1, py: 0.5, bgcolor: '#FFEBEE' }}>
+                                         No intentado
+                                       </Typography>
+                                    )}
 
-                        {!a.is_visible && <Chip label="Oculta" color="warning" size="small" sx={{ ml: 1 }} />}
-                        
-                        {/* --- BOTONES PROFESOR --- */}
-                        {clase.isProfesor && (
-                          <>
-                            {/* BOTÓN CORREGIR (NUEVO) */}
-                            <Button
-                              variant="outlined"
-                              color="secondary"
-                              size="small"
-                              startIcon={<RateReview />}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                router.push(`/actividades/${claseId}/corregir/${a.id}`);
-                              }}
-                              sx={{ mr: 1 }}
-                            >
-                              Corregir
-                            </Button>
+                                    <Button 
+                                      variant="contained" 
+                                      size="small" 
+                                      startIcon={<Visibility />} 
+                                      onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        // Si no se intentó, mostrar modal. Si se intentó, mostrar historial/resultado
+                                        if (isExpired && !hasAttempt) {
+                                          setOpenNotAttemptedDialog(true);
+                                        } else if (hasAttempt) {
+                                          handleOpenHistorial(a.id); 
+                                        }
+                                      }} 
+                                      sx={{ mr: 1, background: 'linear-gradient(135deg, #F57C00 0%, #FF9800 100%)', color: 'white' }}
+                                    >
+                                      Ver Resultado
+                                    </Button>
+                                  </Box>
+                                );
+                              } else {
+                                // SI ESTÁ VIGENTE -> REALIZAR
+                                return (
+                                  <Button 
+                                    variant="contained" 
+                                    size="small" 
+                                    startIcon={<PlayArrow />} 
+                                    onClick={(e) => { 
+                                      e.stopPropagation(); 
+                                      router.push(`/actividades/${claseId}/realizar/${a.id}`); 
+                                    }} 
+                                    sx={{ mr: 1, background: 'linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)', color: 'white' }}
+                                  >
+                                    {a.intento?.estado === 'in_progress' ? 'Continuar' : 'Realizar'}
+                                  </Button>
+                                );
+                              }
+                           })()}
 
-                            <IconButton size="small" onClick={(e) => { 
-                               e.stopPropagation(); 
-                               setCrearForm({ nombre: a.nombre, descripcion: a.descripcion, tipo: a.tipo, fechaInicio: isoToDatetimeLocal(a.fecha_inicio), fechaFin: isoToDatetimeLocal(a.fecha_fin), isVisible: a.is_visible, ejercicioIds: a.ejercicios?.map((e: any) => e.id) || [], nuevosEjercicios: [] }); 
-                               setEditingActividadId(a.id); 
-                               setOpenCrearActividadDialog(true); 
-                            }}><Edit /></IconButton>
-                            
-                            <IconButton size="small" onClick={(e) => { 
-                               e.stopPropagation(); 
-                               setCrearEjercicioAttachActividadId(a.id); 
-                               setOpenCrearEjercicioModal(true); 
-                            }}><Add /></IconButton>
-                            
-                            <IconButton size="small" onClick={async (e) => { 
-                               e.stopPropagation(); 
-                               try { await actividadService.editarActividad(claseId, a.id, { isVisible: !a.is_visible }); loadActividades(); } 
-                               catch (err: any) { alert(err.response?.data?.message || 'Error'); } 
-                            }}>{a.is_visible ? <Visibility /> : <VisibilityOff />}</IconButton>
+                           {/* PRÁCTICA */}
+                           {a.tipo === 'practica' && (
+                             a.intento?.estado === 'in_progress' ? (
+                                <Button variant="contained" size="small" startIcon={<PlayArrow />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/realizar/${a.id}`); }} sx={{ bgcolor: '#1976D2', color: 'white' }}>Continuar</Button>
+                             ) : (
+                                a.intento?.estado === 'finished' ? (
+                                  <>
+                                    <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleOpenHistorial(a.id); }} title="Ver historial" sx={{ color: '#8B4513', border: '1px solid #8B4513', mr: 1 }}>
+                                      <History fontSize="small" />
+                                    </IconButton>
+                                    <Button variant="contained" size="small" startIcon={<RestartAlt />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/realizar/${a.id}`); }} sx={{ bgcolor: '#2E7D32', color: 'white' }}>Volver a Realizar</Button>
+                                  </>
+                                ) : (
+                                  <Button variant="contained" size="small" startIcon={<PlayArrow />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/realizar/${a.id}`); }} sx={{ background: 'linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)', color: 'white' }}>Realizar</Button>
+                                )
+                             )
+                           )}
+                        </>
+                      )}
 
-                            <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setDeleteTargetId(a.id); setOpenDeleteDialog(true); }}><Delete /></IconButton>
-                          </>
-                        )}
-                      </Box>
-                    </ListItemButton>
-                  </ListItem>
-                ))}
-              </List>
+                      {!a.is_visible && <Chip label="Oculta" color="warning" size="small" sx={{ ml: 1 }} />}
+                      
+                      {clase.isProfesor && (
+                        <>
+                          <Button variant="outlined" color="secondary" size="small" startIcon={<RateReview />} onClick={(e) => { e.stopPropagation(); router.push(`/actividades/${claseId}/corregir/${a.id}`); }} sx={{ mr: 1 }}>Corregir</Button>
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); setCrearForm({ nombre: a.nombre, descripcion: a.descripcion, tipo: a.tipo, fechaInicio: isoToDatetimeLocal(a.fecha_inicio), fechaFin: isoToDatetimeLocal(a.fecha_fin), isVisible: a.is_visible, ejercicioIds: a.ejercicios?.map((e: any) => e.id) || [], nuevosEjercicios: [] }); setEditingActividadId(a.id); setOpenCrearActividadDialog(true); }}><Edit /></IconButton>
+                          <IconButton size="small" onClick={(e) => { e.stopPropagation(); setCrearEjercicioAttachActividadId(a.id); setOpenCrearEjercicioModal(true); }}><Add /></IconButton>
+                          <IconButton size="small" onClick={async (e) => { e.stopPropagation(); try { await actividadService.editarActividad(claseId, a.id, { isVisible: !a.is_visible }); loadActividades(); } catch (err: any) { alert(err.response?.data?.message || 'Error'); } }}>{a.is_visible ? <Visibility /> : <VisibilityOff />}</IconButton>
+                          <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setDeleteTargetId(a.id); setOpenDeleteDialog(true); }}><Delete /></IconButton>
+                        </>
+                      )}
+                    </Box>
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </List>
             )}
           </TabPanel>
           
@@ -1223,48 +1270,133 @@ export default function DetalleClasePage() {
         </Dialog>
 
       {/* Dialog de Historial */}
-      <Dialog open={openHistorialDialog} onClose={() => setOpenHistorialDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Historial de Intentos</DialogTitle>
-        <DialogContent>
-          {historialLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}><CircularProgress /></Box>
-          ) : historialData.length === 0 ? (
-            <Typography sx={{ p: 2, textAlign: 'center', color: 'text.secondary' }}>No hay intentos registrados.</Typography>
-          ) : (
-            <List>
-              {historialData.map((intento: any, idx: number) => (
-                <ListItemButton 
-                  key={intento.id} 
-                  divider
-                  onClick={() => {
-                    // NAVEGACIÓN AL INTENTO ESPECÍFICO
-                    // Pasamos mode=revision y el ID del intento
-                    router.push(`/actividades/${claseId}/realizar/${historialActividadId}?mode=revision&intentoId=${intento.id}`);
-                  }}
-                >
-                  <ListItemText 
-                    primary={`Intento #${idx + 1} - ${intento.puntaje !== null ? intento.puntaje + ' pts' : 'Sin puntaje'}`}
-                    secondary={new Date(intento.finished_at || intento.created_at).toLocaleString()}
-                  />
-                  <Chip 
-                    label="Ver" 
-                    size="small" 
-                    color="primary" 
-                    variant="outlined" 
-                    sx={{ cursor: 'pointer' }}
-                  />
-                </ListItemButton>
-              ))}
-            </List>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenHistorialDialog(false)}>Cerrar</Button>
-        </DialogActions>
-      </Dialog>
+        <Dialog 
+          open={openHistorialDialog} 
+          onClose={() => setOpenHistorialDialog(false)} 
+          maxWidth="xs" 
+          fullWidth
+          PaperProps={{
+            sx: { borderRadius: 2 }
+          }}
+        >
+          <DialogTitle sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }}>
+            Historial de Intentos
+          </DialogTitle>
+          
+          <DialogContent sx={{ pt: 2, px: 0 }}>
+            {historialLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress size={30} sx={{ color: '#8B4513' }} />
+              </Box>
+            ) : (
+              historialData.length === 0 ? (
+                <Box sx={{ py: 4, px: 2, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No hay intentos registrados para esta actividad.
+                  </Typography>
+                </Box>
+              ) : (
+                <List sx={{ pt: 0 }}>
+                  {historialData.map((intento: any, idx: number) => (
+                    <ListItemButton 
+                      key={intento.id} 
+                      divider 
+                      onClick={() => {
+                        // Navegación al modo revisión
+                        // IMPORTANTE: 'historialActividadId' debe tener el ID de la actividad actual
+                        router.push(`/actividades/${claseId}/realizar/${historialActividadId}?mode=revision&intentoId=${intento.id}`);
+                        setOpenHistorialDialog(false);
+                      }}
+                      sx={{ 
+                        py: 2,
+                        '&:hover': { bgcolor: 'rgba(139, 69, 19, 0.04)' }
+                      }}
+                    >
+                      <ListItemText 
+                        primary={
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#3E2723' }}>
+                              Intento #{idx + 1}
+                            </Typography>
+                            <Chip 
+                              label={`${intento.puntaje ?? 0} pts`} 
+                              size="small" 
+                              sx={{ 
+                                bgcolor: '#EFEBE9', 
+                                color: '#5D4037', 
+                                fontWeight: 'bold',
+                                height: 24 
+                              }} 
+                            />
+                          </Box>
+                        }
+                        secondary={
+                          <Typography variant="caption" color="text.secondary">
+                            {new Date(intento.finished_at || intento.created_at).toLocaleString()}
+                          </Typography>
+                        }
+                      />
+                      {/* Icono o indicador visual de "Ir" */}
+                      <Box sx={{ ml: 1, color: '#8B4513', opacity: 0.6 }}>
+                        <Visibility fontSize="small" />
+                      </Box>
+                    </ListItemButton>
+                  ))}
+                </List>
+              )
+            )}
+          </DialogContent>
+          
+          <DialogActions sx={{ p: 2, borderTop: '1px solid #eee' }}>
+            <Button 
+              onClick={() => setOpenHistorialDialog(false)}
+              sx={{ color: '#5D4037' }}
+            >
+              Cerrar
+            </Button>
+          </DialogActions>
+        </Dialog>
+
 
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}><MenuItem onClick={() => { if (selectedAnuncio) handleOpenAnuncioDialog(selectedAnuncio); handleMenuClose(); }}><Edit sx={{ mr: 1 }} /> Editar</MenuItem><MenuItem onClick={handleDeleteAnuncio}><Delete sx={{ mr: 1 }} /> Eliminar</MenuItem></Menu>
       
+        {/* DIÁLOGO: ACTIVIDAD VENCIDA */}
+        <Dialog open={openExpiredDialog} onClose={() => setOpenExpiredDialog(false)}>
+          <DialogTitle sx={{ color: '#D32F2F', display: 'flex', alignItems: 'center', gap: 1 }}>
+             <EventBusy /> Actividad Finalizada
+          </DialogTitle>
+          <DialogContent>
+            <Typography sx={{ mt: 1 }}>
+              Esta evaluación ya no está disponible para realizar.
+            </Typography>
+            {expiredActivityDate && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1, borderLeft: '4px solid #D32F2F' }}>
+                <strong>Cerró el:</strong> {new Date(expiredActivityDate).toLocaleString()}
+              </Typography>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenExpiredDialog(false)} sx={{ color: '#5D4037' }}>Cerrar</Button>
+          </DialogActions>
+        </Dialog>
+
+      {/* DIÁLOGO: ACTIVIDAD NO INTENTADA (VENCIDA) */}
+      <Dialog open={openNotAttemptedDialog} onClose={() => setOpenNotAttemptedDialog(false)}>
+        <DialogTitle sx={{ color: '#D32F2F', display: 'flex', alignItems: 'center', gap: 1 }}>
+           <EventBusy /> Actividad No Realizada
+        </DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mt: 1 }}>
+            El plazo para realizar esta evaluación ha finalizado y no se registraron intentos.
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Ya no es posible visualizarla ni completarla.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenNotAttemptedDialog(false)} sx={{ color: '#5D4037' }}>Cerrar</Button>
+        </DialogActions>
+      </Dialog>
 
       </Container>
     </Box>
