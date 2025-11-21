@@ -1,70 +1,72 @@
 'use client';
 
-import { createTheme } from '@mui/material/styles';
+import { createTheme, alpha } from '@mui/material/styles';
 
-// Colores inspirados en el mate argentino
+// Paleta MateKnow
+const MATE_BROWN = '#8B4513';
+const MATE_ORANGE = '#D2691E';
+const MATE_BG = '#F5DEB3';
+const TEXT_DARK = '#3E2723';
+
 export const mateTheme = createTheme({
   palette: {
     primary: {
-      main: '#8B4513', // Marrón mate oscuro
+      main: MATE_BROWN,
       light: '#A0522D',
-      dark: '#654321',
-      contrastText: '#FFF',
+      dark: '#5D4037',
+      contrastText: '#FFFFFF',
     },
     secondary: {
-      main: '#D2691E', // Naranja calabaza (mate)
-      light: '#F4A460',
-      dark: '#8B4513',
-      contrastText: '#FFF',
+      main: MATE_ORANGE,
+      light: '#FF7F50',
+      contrastText: '#FFFFFF',
     },
     background: {
-      default: '#F5DEB3', // Beige claro (como el fondo de la imagen)
+      default: MATE_BG,
       paper: '#FFFFFF',
     },
     text: {
-      primary: '#3E2723',
-      secondary: '#5D4037',
-    },
-    error: {
-      main: '#D32F2F',
-    },
-    success: {
-      main: '#388E3C',
-    },
-  },
-  typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h1: {
-      fontWeight: 700,
-      fontSize: '2.5rem',
-      color: '#3E2723',
-    },
-    h2: {
-      fontWeight: 600,
-      fontSize: '2rem',
-      color: '#3E2723',
-    },
-    button: {
-      textTransform: 'none',
-      fontWeight: 600,
+      primary: TEXT_DARK,
+      secondary: alpha(TEXT_DARK, 0.7),
     },
   },
   shape: {
-    borderRadius: 12,
+    borderRadius: 24, // Bordes redondeados (Estilo Google)
+  },
+  typography: {
+    fontFamily: 'var(--font-google-sans), "Roboto", "Helvetica", "Arial", sans-serif',
+    h1: { fontWeight: 800, letterSpacing: '-0.02em' }, 
+    h2: { fontWeight: 700, letterSpacing: '-0.02em' },
+    button: { 
+      textTransform: 'none', 
+      fontWeight: 600 
+    },
   },
   components: {
     MuiButton: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
+          borderRadius: 50, // Botones tipo Píldora
           padding: '10px 24px',
-          fontSize: '1rem',
+          boxShadow: 'none',
+          '&:hover': {
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          },
         },
         contained: {
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
           '&:hover': {
-            boxShadow: '0 6px 12px rgba(0, 0, 0, 0.15)',
-          },
+            backgroundColor: MATE_ORANGE, // Efecto hover global
+          }
+        }
+      },
+    },
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          borderRadius: 24,
+          boxShadow: 'none',
+          border: '1px solid transparent',
+          transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
         },
       },
     },
@@ -72,19 +74,22 @@ export const mateTheme = createTheme({
       styleOverrides: {
         root: {
           '& .MuiOutlinedInput-root': {
-            '&:hover fieldset': {
-              borderColor: '#8B4513',
-            },
-          },
-        },
-      },
+            borderRadius: 16,
+            backgroundColor: alpha('#FFF', 0.8),
+            '& fieldset': { borderColor: alpha(MATE_BROWN, 0.3) },
+            '&:hover fieldset': { borderColor: MATE_BROWN },
+            '&.Mui-focused fieldset': { borderWidth: 2 }
+          }
+        }
+      }
     },
-    MuiPaper: {
+    MuiDialog: {
       styleOverrides: {
-        root: {
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)',
-        },
-      },
-    },
+        paper: {
+          borderRadius: 28,
+          padding: 16,
+        }
+      }
+    }
   },
 });
