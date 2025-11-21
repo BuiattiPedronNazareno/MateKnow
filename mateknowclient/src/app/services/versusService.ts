@@ -1,149 +1,128 @@
-import axios from 'axios';
+// ====================================
+// ARCHIVO: src/app/services/versusService.ts
+// ====================================
+
 import { io, Socket } from 'socket.io-client';
 
-const API_URL = 'http://localhost:4000';
+const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
-// Cliente axios configurado
-const api = axios.create({
-  baseURL: `${API_URL}/versus`,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+export interface VersusQuestion {
+  id: string;
+  enunciado: string;
+  opciones: string[];
+  respuestaCorrecta?: number; // Solo disponible en revisión
+  categoria?: string;
+}
 
-// Agregar token automáticamente a todas las requests
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+export interface MatchData {
+  lobbyId: string;
+  claseId: string;
+  opponent: { nombre: string; apellido: string };
+  currentTurn: string;
+  yourTurn: boolean;
+  phase: 'selection' | 'answering' | 'finished';
+  questions: VersusQuestion[];
+}
 
-/**
- * Clase para manejar la conexión WebSocket y llamadas REST
- */
+export interface MatchResult {
+  lobbyId: string;
+  phase: 'finished';
+  winner: { userId: string; nombre: string; apellido: string; points: number } | null;
+  isDraw: boolean;
+  youWon: boolean;
+  player1: PlayerResult;
+  player2: PlayerResult;
+}
+
+export interface PlayerResult {
+  userId: string;
+  nombre: string;
+  apellido: string;
+  totalPoints: number;
+  correctAnswers: number;
+  answers: any[];
+}
+
 class VersusService {
   private socket: Socket | null = null;
-  private token: string | null = null;
-  private currentMatchData: any = null;
+  private currentMatchData: MatchData | null = null;
 
-  /**
-   * Conecta al WebSocket del servidor
-   */
   connect(): Socket {
     if (this.socket?.connected) {
       return this.socket;
     }
 
-    this.token = localStorage.getItem('access_token');
-
-    if (!this.token) {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
       throw new Error('No hay token de autenticación');
     }
 
-    this.socket = io(`${API_URL}/versus`, {
-      query: { token: this.token },
+    this.socket = io(`${SOCKET_URL}/versus`, {
+      query: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionDelay: 1000,
       reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
 
-    // Event listeners
     this.socket.on('connect', () => {
-      console.log('✅ WebSocket conectado:', this.socket?.id);
+      console.log('✅ Conectado a Versus WebSocket');
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.warn('⚠️ WebSocket desconectado:', reason);
+      console.log('❌ Desconectado de Versus:', reason);
     });
 
     this.socket.on('connect_error', (error) => {
-      console.error('❌ Error de conexión:', error.message);
-    });
-
-    this.socket.on('match-found', (data) => {
-      console.log('🎯 Match encontrado, guardando datos...', data);
-      this.currentMatchData = data;
+      console.error('Error de conexión:', error.message);
     });
 
     return this.socket;
   }
 
-  /**
-   * Obtiene los datos del match actual
-   */
-  getCurrentMatchData(): any {
-    return this.currentMatchData;
-  }
-
-  /**
-   * Limpia los datos del match actual
-   */
-  clearCurrentMatchData(): void {
-    this.currentMatchData = null;
-  }
-
-  /**
-   * Desconecta el WebSocket
-   */
   disconnect(): void {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.currentMatchData = null;
   }
 
-  /**
-   * Obtiene el socket actual
-   */
   getSocket(): Socket | null {
     return this.socket;
   }
 
+  // ========================================
+  // ACCIONES DEL JUGADOR
+  // ========================================
+
   /**
-   * Busca una partida
+   * Buscar partida en una clase específica
    */
-  searchMatch(): void {
+  searchMatch(claseId: string): void {
     if (!this.socket) {
       throw new Error('Socket no conectado');
     }
-    this.socket.emit('search-match', {});
+    this.socket.emit('search-match', { claseId });
   }
 
-  /**
-   * Cancela la búsqueda de partida
-   */
   cancelSearch(): void {
-    if (!this.socket) {
-      throw new Error('Socket no conectado');
-    }
-    this.socket.emit('cancel-search', {});
+    if (!this.socket) return;
+    this.socket.emit('cancel-search');
   }
 
-  /**
-   * Selecciona una pregunta
-   */
   selectQuestion(lobbyId: string, questionId: string): void {
-    if (!this.socket) {
-      throw new Error('Socket no conectado');
-    }
+    if (!this.socket) return;
     this.socket.emit('select-question', { lobbyId, questionId });
   }
 
-  /**
-   * Responde una pregunta
-   */
   answerQuestion(
     lobbyId: string,
     questionId: string,
     selectedOption: number,
-    timeSeconds: number,
+    timeSeconds: number
   ): void {
-    if (!this.socket) {
-      throw new Error('Socket no conectado');
-    }
+    if (!this.socket) return;
     this.socket.emit('answer-question', {
       lobbyId,
       questionId,
@@ -152,63 +131,94 @@ class VersusService {
     });
   }
 
-  /**
-   * Obtiene todas las preguntas (REST)
-   */
-  async getQuestions() {
-    const response = await api.get('/questions');
-    return response.data;
+  // ========================================
+  // GESTIÓN DE DATOS DE PARTIDA
+  // ========================================
+
+  setCurrentMatchData(data: MatchData): void {
+    this.currentMatchData = data;
   }
 
-  /**
-   * Obtiene el estado actual del usuario (REST)
-   */
-  async getStatus() {
-    const response = await api.get('/status');
-    return response.data;
+  getCurrentMatchData(): MatchData | null {
+    return this.currentMatchData;
   }
 
-  /**
-   * Obtiene el estado de una lobby (REST)
-   */
-  async getLobby(lobbyId: string) {
-    const response = await api.get(`/lobby/${lobbyId}`);
-    return response.data;
+  clearMatchData(): void {
+    this.currentMatchData = null;
   }
 
-  /**
-   * Abandona la partida actual (REST)
-   */
-  async leaveMatch() {
-    const response = await api.post('/leave');
-    return response.data;
+  // ========================================
+  // LISTENERS HELPER
+  // ========================================
+
+  onConnected(callback: (data: any) => void): void {
+    this.socket?.on('connected', callback);
   }
 
-  /**
-   * Registra listeners de eventos
-   */
-  on(event: string, callback: (data: any) => void): void {
-    if (!this.socket) {
-      throw new Error('Socket no conectado');
-    }
-    this.socket.on(event, callback);
+  onSearching(callback: (data: any) => void): void {
+    this.socket?.on('searching', callback);
   }
 
-  /**
-   * Remueve listener de evento
-   */
-  off(event: string, callback?: (data: any) => void): void {
-    if (!this.socket) {
-      return;
-    }
-    if (callback) {
-      this.socket.off(event, callback);
-    } else {
-      this.socket.off(event);
-    }
+  onSearchCancelled(callback: (data: any) => void): void {
+    this.socket?.on('search-cancelled', callback);
+  }
+
+  onMatchFound(callback: (data: MatchData) => void): void {
+    this.socket?.on('match-found', (data) => {
+      this.setCurrentMatchData(data);
+      callback(data);
+    });
+  }
+
+  onQuestionSelected(callback: (data: any) => void): void {
+    this.socket?.on('question-selected', callback);
+  }
+
+  onOpponentSelected(callback: (data: any) => void): void {
+    this.socket?.on('opponent-selected', callback);
+  }
+
+  onAnsweringPhaseStart(callback: (data: any) => void): void {
+    this.socket?.on('answering-phase-start', callback);
+  }
+
+  onAnswerRecorded(callback: (data: any) => void): void {
+    this.socket?.on('answer-recorded', callback);
+  }
+
+  onOpponentProgress(callback: (data: any) => void): void {
+    this.socket?.on('opponent-progress', callback);
+  }
+
+  onMatchFinished(callback: (data: MatchResult) => void): void {
+    this.socket?.on('match-finished', callback);
+  }
+
+  onOpponentDisconnected(callback: (data: any) => void): void {
+    this.socket?.on('opponent-disconnected', callback);
+  }
+
+  onError(callback: (data: { message: string }) => void): void {
+    this.socket?.on('error', callback);
+  }
+
+  // Limpiar todos los listeners
+  removeAllListeners(): void {
+    if (!this.socket) return;
+    this.socket.removeAllListeners('connected');
+    this.socket.removeAllListeners('searching');
+    this.socket.removeAllListeners('search-cancelled');
+    this.socket.removeAllListeners('match-found');
+    this.socket.removeAllListeners('question-selected');
+    this.socket.removeAllListeners('opponent-selected');
+    this.socket.removeAllListeners('answering-phase-start');
+    this.socket.removeAllListeners('answer-recorded');
+    this.socket.removeAllListeners('opponent-progress');
+    this.socket.removeAllListeners('match-finished');
+    this.socket.removeAllListeners('opponent-disconnected');
+    this.socket.removeAllListeners('error');
   }
 }
 
-// Exportar instancia única (singleton)
-const versusService = new VersusService();
-export default versusService;
+// Singleton
+export const versusService = new VersusService();

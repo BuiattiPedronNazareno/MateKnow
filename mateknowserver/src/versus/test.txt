@@ -103,3 +103,15 @@ SCRIPT 4 (sin turno)
 
 window.testSocket.emit('select-question', { lobbyId: 'lobby_1763506278398_zddfjkzwk', questionId: 'q5' });
 
+
+
+
+
+
+
+Cambiar estilos de boton en clase y de busqueda de lobby
+
+caso de empate (actualmente se elige un ganador random)
+
+ranking de la clase?
+

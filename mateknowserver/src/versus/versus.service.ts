@@ -5,6 +5,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createClient, RedisClientType } from 'redis';
 import { ConfigService } from '@nestjs/config';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { 
   GameState,  
   GamePhase, 
@@ -12,138 +13,32 @@ import {
   VersusQuestion 
 } from './interfaces/game-state.interface';
 import { PlayerSession } from './interfaces/player-session.interface';
-/**
- * Servicio principal del Modo Versus
- * Gestiona lobbies, matchmaking y estado del juego en Redis
- */
+
+// Constantes
+const MULTIPLE_CHOICE_TIPO_ID = 'bd9aad5a-dd58-4e67-a642-3bde167dc937';
+const MIN_PREGUNTAS_VERSUS = 10;
+const MAX_PREGUNTAS_PARTIDA = 16;
+
 @Injectable()
 export class VersusService {
   private readonly logger = new Logger(VersusService.name);
   private redisClient: RedisClientType;
-  
-  // Preguntas hardcodeadas (por ahora)
-  private readonly QUESTIONS: VersusQuestion[] = [
-    {
-      id: 'q1',
-      enunciado: '¿Cuánto es 2 + 2?',
-      opciones: ['3', '4', '5', '6'],
-      respuestaCorrecta: 1,
-      categoria: 'Aritmética'
-    },
-    {
-      id: 'q2',
-      enunciado: '¿Cuál es la raíz cuadrada de 16?',
-      opciones: ['2', '4', '8', '16'],
-      respuestaCorrecta: 1,
-      categoria: 'Raíces'
-    },
-    {
-      id: 'q3',
-      enunciado: '¿Cuánto es 5 × 7?',
-      opciones: ['30', '35', '40', '45'],
-      respuestaCorrecta: 1,
-      categoria: 'Multiplicación'
-    },
-    {
-      id: 'q4',
-      enunciado: '¿Cuánto es 100 ÷ 4?',
-      opciones: ['20', '25', '30', '35'],
-      respuestaCorrecta: 1,
-      categoria: 'División'
-    },
-    {
-      id: 'q5',
-      enunciado: '¿Cuál es el valor de π redondeado?',
-      opciones: ['3.12', '3.14', '3.16', '3.18'],
-      respuestaCorrecta: 1,
-      categoria: 'Constantes'
-    },
-    {
-      id: 'q6',
-      enunciado: '¿Cuánto es 2³?',
-      opciones: ['4', '6', '8', '10'],
-      respuestaCorrecta: 2,
-      categoria: 'Potencias'
-    },
-    {
-      id: 'q7',
-      enunciado: '¿Cuántos grados tiene un triángulo?',
-      opciones: ['90°', '180°', '270°', '360°'],
-      respuestaCorrecta: 1,
-      categoria: 'Geometría'
-    },
-    {
-      id: 'q8',
-      enunciado: '¿Cuánto es 15% de 200?',
-      opciones: ['20', '25', '30', '35'],
-      respuestaCorrecta: 2,
-      categoria: 'Porcentajes'
-    },
-    {
-      id: 'q9',
-      enunciado: '¿Cuál es el resultado de |−5|?',
-      opciones: ['−5', '0', '5', '10'],
-      respuestaCorrecta: 2,
-      categoria: 'Valor absoluto'
-    },
-    {
-      id: 'q10',
-      enunciado: '¿Cuánto es 12 − 7?',
-      opciones: ['3', '4', '5', '6'],
-      respuestaCorrecta: 2,
-      categoria: 'Resta'
-    },
-    {
-      id: 'q11',
-      enunciado: '¿Cuántos lados tiene un hexágono?',
-      opciones: ['4', '5', '6', '7'],
-      respuestaCorrecta: 2,
-      categoria: 'Geometría'
-    },
-    {
-      id: 'q12',
-      enunciado: '¿Cuánto es 9²?',
-      opciones: ['18', '72', '81', '90'],
-      respuestaCorrecta: 2,
-      categoria: 'Potencias'
-    },
-    {
-      id: 'q13',
-      enunciado: '¿Cuál es el mínimo común múltiplo de 4 y 6?',
-      opciones: ['8', '10', '12', '24'],
-      respuestaCorrecta: 2,
-      categoria: 'MCM'
-    },
-    {
-      id: 'q14',
-      enunciado: '¿Cuánto es 3/4 en decimal?',
-      opciones: ['0.25', '0.5', '0.75', '1.0'],
-      respuestaCorrecta: 2,
-      categoria: 'Fracciones'
-    },
-    {
-      id: 'q15',
-      enunciado: '¿Cuántos minutos hay en 2.5 horas?',
-      opciones: ['120', '130', '150', '180'],
-      respuestaCorrecta: 2,
-      categoria: 'Conversiones'
-    },
-    {
-      id: 'q16',
-      enunciado: '¿Cuál es el área de un cuadrado de lado 5?',
-      opciones: ['10', '20', '25', '30'],
-      respuestaCorrecta: 2,
-      categoria: 'Área'
-    }
-  ];
+  private supabase: any;
 
   constructor(private configService: ConfigService) {
     this.initRedis();
+    this.initSupabase();
   }
 
-  /**
-   * Inicializa la conexión con Redis Cloud
-   */
+  private initSupabase() {
+    const supabaseUrl = this.configService.getOrThrow<string>('SUPABASE_URL');
+    const supabaseKey = this.configService.getOrThrow<string>('SUPABASE_SERVICE_ROLE_KEY');
+
+    this.supabase = createSupabaseClient(supabaseUrl, supabaseKey);
+    this.logger.log('✅ Supabase inicializado en VersusService');
+  }
+
+
   private async initRedis() {
     try {
       this.redisClient = createClient({
@@ -159,7 +54,7 @@ export class VersusService {
       });
 
       this.redisClient.on('connect', () => {
-        this.logger.log('✅ Conectado a Redis Cloud exitosamente');
+        this.logger.log('✅ Conectado a Redis Cloud');
       });
 
       await this.redisClient.connect();
@@ -169,142 +64,220 @@ export class VersusService {
     }
   }
 
+  // ========================================
+  // NUEVA LÓGICA: Preguntas desde Supabase
+  // ========================================
+
   /**
-   * Guarda una sesión de jugador en Redis
-   * Key: player:{userId}
-   * TTL: 30 minutos
+   * Valida si una clase tiene suficientes preguntas para Versus
+   * Condiciones: tipo_id = multiple-choice, is_versus = true, >= 10 preguntas
    */
-  async savePlayerSession(session: PlayerSession): Promise<void> {
-    const key = `player:${session.userId}`;
-    await this.redisClient.set(key, JSON.stringify(session), {
-      EX: 1800, // 30 minutos
+  async validarPreguntasDisponibles(claseId: string): Promise<{ valido: boolean; cantidad: number }> {
+    const { data, error } = await this.supabase
+      .from('actividad_ejercicio')
+      .select(`
+        ejercicio:ejercicio_id (
+          id,
+          tipo_id,
+          metadata
+        ),
+        actividad:actividad_id (
+          clase_id
+        )
+      `)
+      .eq('actividad.clase_id', claseId);
+
+    if (error) {
+      this.logger.error(`Error validando preguntas: ${error.message}`);
+      return { valido: false, cantidad: 0 };
+    }
+
+    // Filtrar por tipo multiple-choice y is_versus = true
+    const preguntasValidas = (data || []).filter((item: any) => {
+      const ej = item.ejercicio;
+      if (!ej) return false;
+      
+      const esMultipleChoice = ej.tipo_id === MULTIPLE_CHOICE_TIPO_ID;
+      const esVersus = ej.metadata?.is_versus === true;
+      
+      return esMultipleChoice && esVersus;
     });
-    this.logger.log(`Sesión guardada: ${session.nombre} ${session.apellido}`);
+
+    const cantidad = preguntasValidas.length;
+    return { 
+      valido: cantidad >= MIN_PREGUNTAS_VERSUS, 
+      cantidad 
+    };
   }
 
   /**
-   * Obtiene la sesión de un jugador
+   * Obtiene preguntas de una clase filtradas para Versus
+   * Solo multiple-choice con is_versus = true
    */
+  async obtenerPreguntasDeClase(claseId: string): Promise<VersusQuestion[]> {
+    // Consulta: ejercicios vinculados a actividades de esta clase
+    const { data, error } = await this.supabase
+      .from('actividad_ejercicio')
+      .select(`
+        ejercicio:ejercicio_id (
+          id,
+          enunciado,
+          puntos,
+          tipo_id,
+          metadata,
+          opcion_ejercicio (
+            id,
+            texto,
+            is_correcta
+          )
+        ),
+        actividad:actividad_id (
+          clase_id
+        )
+      `)
+      .eq('actividad.clase_id', claseId);
+
+    if (error) {
+      this.logger.error(`Error obteniendo preguntas: ${error.message}`);
+      return [];
+    }
+
+    // Filtrar y mapear
+    const preguntasFiltradas: VersusQuestion[] = [];
+    const idsVistos = new Set<string>();
+
+    for (const item of (data || [])) {
+      const ej = item.ejercicio;
+      if (!ej) continue;
+
+      // Evitar duplicados (mismo ejercicio en múltiples actividades)
+      if (idsVistos.has(ej.id)) continue;
+      idsVistos.add(ej.id);
+
+      // Filtrar: solo multiple-choice con is_versus = true
+      const esMultipleChoice = ej.tipo_id === MULTIPLE_CHOICE_TIPO_ID;
+      const esVersus = ej.metadata?.is_versus === true;
+
+      if (!esMultipleChoice || !esVersus) continue;
+
+      // Encontrar índice de respuesta correcta
+      const opciones = ej.opcion_ejercicio || [];
+      const indexCorrecta = opciones.findIndex((o: any) => o.is_correcta === true);
+
+      preguntasFiltradas.push({
+        id: ej.id,
+        enunciado: ej.enunciado,
+        opciones: opciones.map((o: any) => o.texto),
+        respuestaCorrecta: indexCorrecta >= 0 ? indexCorrecta : 0,
+        categoria: ej.metadata?.categoria || 'General',
+      });
+    }
+
+    this.logger.log(`📚 Clase ${claseId}: ${preguntasFiltradas.length} preguntas válidas para Versus`);
+    return preguntasFiltradas;
+  }
+
+  /**
+   * Selecciona preguntas aleatorias para una partida
+   * Máximo 16, o todas si hay menos
+   */
+  seleccionarPreguntasAleatorias(preguntas: VersusQuestion[]): VersusQuestion[] {
+    if (preguntas.length <= MAX_PREGUNTAS_PARTIDA) {
+      return this.shuffleArray([...preguntas]);
+    }
+
+    // Seleccionar 16 aleatorias
+    const shuffled = this.shuffleArray([...preguntas]);
+    return shuffled.slice(0, MAX_PREGUNTAS_PARTIDA);
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
+  // ========================================
+  // COLA DE BÚSQUEDA POR CLASE
+  // ========================================
+
+  async addToSearchQueue(userId: string, claseId: string): Promise<void> {
+    const key = `queue:searching:${claseId}`;
+    await this.redisClient.sAdd(key, userId);
+    this.logger.log(`Usuario ${userId} agregado a cola de clase ${claseId}`);
+  }
+
+  async removeFromSearchQueue(userId: string, claseId: string): Promise<void> {
+    const key = `queue:searching:${claseId}`;
+    await this.redisClient.sRem(key, userId);
+  }
+
+  async getSearchQueue(claseId: string): Promise<string[]> {
+    const key = `queue:searching:${claseId}`;
+    return await this.redisClient.sMembers(key);
+  }
+
+  // ========================================
+  // SESIONES Y LOBBIES (sin cambios mayores)
+  // ========================================
+
+  async savePlayerSession(session: PlayerSession): Promise<void> {
+    const key = `player:${session.userId}`;
+    await this.redisClient.set(key, JSON.stringify(session), { EX: 1800 });
+  }
+
   async getPlayerSession(userId: string): Promise<PlayerSession | null> {
     const key = `player:${userId}`;
     const data = await this.redisClient.get(key);
     return data ? JSON.parse(data) : null;
   }
 
-  /**
-   * Elimina la sesión de un jugador
-   */
   async deletePlayerSession(userId: string): Promise<void> {
     const key = `player:${userId}`;
     await this.redisClient.del(key);
   }
 
-  /**
-   * Guarda el estado de una lobby/partida
-   * Key: lobby:{lobbyId}
-   * TTL: 1 hora
-   */
   async saveGameState(gameState: GameState): Promise<void> {
     const key = `lobby:${gameState.lobbyId}`;
-    await this.redisClient.set(key, JSON.stringify(gameState), {
-      EX: 3600, // 1 hora
-    });
-    this.logger.log(`Estado de lobby guardado: ${gameState.lobbyId}`);
+    await this.redisClient.set(key, JSON.stringify(gameState), { EX: 3600 });
   }
 
-  /**
-   * Obtiene el estado de una lobby
-   */
   async getGameState(lobbyId: string): Promise<GameState | null> {
     const key = `lobby:${lobbyId}`;
     const data = await this.redisClient.get(key);
     return data ? JSON.parse(data) : null;
   }
 
-  /**
-   * Elimina una lobby (cuando termina la partida)
-   */
   async deleteGameState(lobbyId: string): Promise<void> {
     const key = `lobby:${lobbyId}`;
     await this.redisClient.del(key);
-    this.logger.log(`Lobby eliminada: ${lobbyId}`);
   }
 
-  /**
-   * Agrega un jugador a la cola de búsqueda
-   * Key: queue:searching (Set)
-   */
-  async addToSearchQueue(userId: string): Promise<void> {
-    await this.redisClient.sAdd('queue:searching', userId);
-    this.logger.log(`Usuario agregado a cola: ${userId}`);
-  }
-
-  /**
-   * Remueve un jugador de la cola de búsqueda
-   */
-  async removeFromSearchQueue(userId: string): Promise<void> {
-    await this.redisClient.sRem('queue:searching', userId);
-  }
-
-  /**
-   * Obtiene todos los usuarios buscando partida
-   */
-  async getSearchQueue(): Promise<string[]> {
-    return await this.redisClient.sMembers('queue:searching');
-  }
-
-  /**
-   * Obtiene todas las preguntas del juego
-   */
-  getQuestions(): VersusQuestion[] {
-    return this.QUESTIONS;
-  }
-
-  /**
-   * Obtiene una pregunta específica por ID
-   */
-  getQuestionById(questionId: string): VersusQuestion | undefined {
-    return this.QUESTIONS.find((q) => q.id === questionId);
-  }
-
-  /**
-   * Calcula los puntos obtenidos por una respuesta
-   * Fórmula: 50 * (tiempo / 10)
-   * Máximo: 50 puntos (respuesta inmediata)
-   * Mínimo: 0 puntos (respuesta incorrecta)
-   */
-  calculatePoints(isCorrect: boolean, timeSeconds: number): number {
-    if (!isCorrect) return 0;
-    
-    // Puntos base por respuesta correcta
-    const basePoints = 50;
-    
-    // Bonus por velocidad (máximo en 0 segundos, mínimo en 10+ segundos)
-    const timeBonus = Math.max(0, 10 - timeSeconds) * 5;
-    
-    return basePoints + timeBonus;
-  }
+  // ========================================
+  // LÓGICA DE JUEGO
+  // ========================================
 
   /**
    * Valida si una pregunta puede ser seleccionada
-   * Verifica que no haya sido seleccionada ya por ningún jugador
+   * MODIFICADO: Verifica contra ambos jugadores
    */
   canSelectQuestion(
     gameState: GameState,
     questionId: string,
   ): { valid: boolean; reason?: string } {
-    // Verificar que la pregunta existe
-    const question = this.getQuestionById(questionId);
+    // Verificar que la pregunta existe en el pool de la partida
+    const question = gameState.questions?.find(q => q.id === questionId);
     if (!question) {
-      return { valid: false, reason: 'La pregunta no existe' };
+      return { valid: false, reason: 'La pregunta no existe en esta partida' };
     }
 
-    // Verificar que no haya sido seleccionada por player1
+    // Verificar que NO haya sido seleccionada por NINGUNO de los jugadores
     if (gameState.player1.selectedQuestions.includes(questionId)) {
       return { valid: false, reason: 'Esta pregunta ya fue seleccionada' };
     }
 
-    // Verificar que no haya sido seleccionada por player2
     if (gameState.player2.selectedQuestions.includes(questionId)) {
       return { valid: false, reason: 'Esta pregunta ya fue seleccionada' };
     }
@@ -312,9 +285,24 @@ export class VersusService {
     return { valid: true };
   }
 
-  /**
-   * Verifica si ambos jugadores terminaron de seleccionar
-   */
+  // Mantener métodos existentes sin cambios
+  getQuestionById(questionId: string): VersusQuestion | undefined {
+    // Este método ya no se usa directamente, las preguntas están en gameState
+    return undefined;
+  }
+
+  getQuestions(): VersusQuestion[] {
+    // Deprecado - las preguntas se obtienen de la BD
+    return [];
+  }
+
+  calculatePoints(isCorrect: boolean, timeSeconds: number): number {
+    if (!isCorrect) return 0;
+    const basePoints = 50;
+    const timeBonus = Math.max(0, 10 - timeSeconds) * 5;
+    return basePoints + timeBonus;
+  }
+
   haveBothFinishedSelection(gameState: GameState): boolean {
     return (
       gameState.player1.hasFinishedSelection &&
@@ -322,41 +310,21 @@ export class VersusService {
     );
   }
 
-  /**
-   * Asigna las preguntas seleccionadas a cada jugador
-   * Player1 responde las que seleccionó Player2 y viceversa
-   */
   assignQuestionsToPlayers(gameState: GameState): GameState {
-    // Player1 responde las preguntas seleccionadas por Player2
-    gameState.player1.assignedQuestions = [
-      ...gameState.player2.selectedQuestions,
-    ];
-
-    // Player2 responde las preguntas seleccionadas por Player1
-    gameState.player2.assignedQuestions = [
-      ...gameState.player1.selectedQuestions,
-    ];
-
+    gameState.player1.assignedQuestions = [...gameState.player2.selectedQuestions];
+    gameState.player2.assignedQuestions = [...gameState.player1.selectedQuestions];
     return gameState;
   }
 
-  /**
-   * Cambia el turno al otro jugador
-   */
   switchTurn(gameState: GameState): GameState {
     gameState.currentTurn =
       gameState.currentTurn === gameState.player1.userId
         ? gameState.player2.userId
         : gameState.player1.userId;
-
     gameState.turnStartedAt = new Date();
-
     return gameState;
   }
 
-  /**
-   * Cierra la conexión con Redis (llamar en onModuleDestroy)
-   */
   async onModuleDestroy() {
     await this.redisClient.quit();
     this.logger.log('Conexión Redis cerrada');
