@@ -1275,11 +1275,8 @@ export default function DetalleClasePage() {
           onClose={() => setOpenHistorialDialog(false)} 
           maxWidth="xs" 
           fullWidth
-          PaperProps={{
-            sx: { borderRadius: 2 }
-          }}
         >
-          <DialogTitle sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }}>
+          <DialogTitle sx={{ fontWeight: 600 }}>
             Historial de Intentos
           </DialogTitle>
           

@@ -13,6 +13,7 @@ import {
   Cancel, Check, ArrowBack, Visibility, Quiz
 } from '@mui/icons-material';
 import { actividadService, Intento } from '@/app/services/actividadService';
+import { MathJax, MathJaxContext } from "better-react-mathjax";
 
 // Componente Timer con estilo Mate
 const ExamTimer = ({ fechaFin, onExpire }: { fechaFin: string, onExpire: () => void }) => {
@@ -101,6 +102,17 @@ export default function RealizarActividadPage() {
   const [openFinishDialog, setOpenFinishDialog] = useState(false);
   
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // CONFIGURACIÓN DE MATHJAX
+  const mathjaxConfig = {
+    loader: { load: ["input/tex", "output/chtml"] },
+    tex: {
+      inlineMath: [["$", "$"], ["\\(", "\\)"]],
+      displayMath: [["$$", "$$"]],
+    },
+    // AGREGAR ESTA LÍNEA para asegurar la carga:
+    src: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+  };
 
   useEffect(() => {
     // Evitar que corra si no hay IDs o si ya se inicializó
@@ -339,155 +351,161 @@ export default function RealizarActividadPage() {
   }
 
   // --------------------------------------------------------------------------
-  // VISTA: MODO REVISIÓN (Google Forms Style)
+  // VISTA: MODO REVISIÓN 
   // --------------------------------------------------------------------------
   if (isReviewMode) {
     const totalPuntos = ejercicios.reduce((acc, e) => acc + (Number(e.puntos) || 0), 0);
     
     return (
-      <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pb: 8 }}>
-        {/* Header Revisión */}
-        <Box sx={{ bgcolor: '#3E2723', color: 'white', py: 3, px: 2, textAlign: 'center', mb: 4, boxShadow: 3 }}>
-          <Typography variant="h5" fontWeight="bold">Revisión de Examen</Typography>
-          <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>{actividad?.nombre}</Typography>
-          
-          {intento && (
-             <Typography variant="caption" sx={{ display: 'block', mt: 1, opacity: 0.8 }}>
-               {/* Usamos created_at (o started_at como fallback) y toLocaleString para incluir la hora */}
-               Realizado el: {new Date((intento as any).created_at || intento.started_at).toLocaleString()}
-             </Typography>
-          )}
-
-          <Chip 
-            label={`Calificación: ${score} / ${totalPuntos}`} 
-            sx={{ mt: 2, bgcolor: '#FFF', color: '#3E2723', fontWeight: 'bold', fontSize: '1.1rem', py: 2 }} 
-          />
-        </Box>
-
-        <Container maxWidth="md">
-          <Button startIcon={<ArrowBack />} onClick={() => router.push(`/clases/${claseId}`)} sx={{ mb: 2, color: '#3E2723' }}>
-            Volver a la clase
-          </Button>
-
-          {ejercicios.map((ej, idx) => {
-            // 1. BÚSQUEDA ROBUSTA DE LA RESPUESTA DEL USUARIO
-            // Convertimos a String ambos IDs para asegurar que se encuentren
-            const respObjeto = intento?.respuestas?.find((r: any) => 
-              String(r.ejercicioId).trim() === String(ej.id).trim()
-            );
+      <MathJaxContext version={3} config={mathjaxConfig}>
+        <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pb: 8 }}>
+          {/* Header Revisión */}
+          <Box sx={{ bgcolor: '#3E2723', color: 'white', py: 3, px: 2, textAlign: 'center', mb: 4, boxShadow: 3 }}>
+            <Typography variant="h5" fontWeight="bold">Revisión de Examen</Typography>
+            <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>{actividad?.nombre}</Typography>
             
-            const respuestaUsuario = respObjeto?.respuesta; 
-            
-            let esCorrecto = false;
-            let puntosObtenidos = 0;
-            let fueCorregido = !!respObjeto?.corregido;
+            {intento && (
+               <Typography variant="caption" sx={{ display: 'block', mt: 1, opacity: 0.8 }}>
+                 Realizado el: {new Date((intento as any).created_at || intento.started_at).toLocaleString()}
+               </Typography>
+            )}
 
-            // 2. LÓGICA DE CORRECCIÓN (Igualando a la del Backend)
-            if (ej.tipo === 'abierta') {
-               if (fueCorregido && respObjeto.puntajeManual !== undefined) {
-                 puntosObtenidos = Number(respObjeto.puntajeManual);
-                 esCorrecto = puntosObtenidos > 0;
-               } else {
-                 puntosObtenidos = 0;
-                 esCorrecto = false; 
-               }
-            } else {
-              // LÓGICA AUTOMÁTICA BLINDADA
-              const opcionCorrecta = ej.opciones?.find((o: any) => o.is_correcta);
+            <Chip 
+              label={`Calificación: ${score} / ${totalPuntos}`} 
+              sx={{ mt: 2, bgcolor: '#FFF', color: '#3E2723', fontWeight: 'bold', fontSize: '1.1rem', py: 2 }} 
+            />
+          </Box>
+
+          <Container maxWidth="md">
+            <Button startIcon={<ArrowBack />} onClick={() => router.push(`/clases/${claseId}`)} sx={{ mb: 2, color: '#3E2723' }}>
+              Volver a la clase
+            </Button>
+
+            {ejercicios.map((ej, idx) => {
+              const respObjeto = intento?.respuestas?.find((r: any) => 
+                String(r.ejercicioId).trim() === String(ej.id).trim()
+              );
+              const respuestaUsuario = respObjeto?.respuesta; 
               
-              // Normalización total para comparar
-              const idUsuario = String(respuestaUsuario || '').trim();
-              const idCorrecta = String(opcionCorrecta?.id || '').trim();
+              let esCorrecto = false;
+              let puntosObtenidos = 0;
+              let fueCorregido = !!respObjeto?.corregido;
 
-              if (idCorrecta && idUsuario === idCorrecta) {
-                esCorrecto = true;
-                puntosObtenidos = Number(ej.puntos);
+              // DETECCIÓN DE TIPO: Abierta o Latex sin opciones se tratan igual
+              const isTipoAbierta = ej.tipo === 'abierta' || (ej.tipo === 'latex' && (!ej.opciones || ej.opciones.length === 0));
+
+              // 2. LÓGICA DE CORRECCIÓN
+              if (isTipoAbierta) {
+                 if (fueCorregido && respObjeto.puntajeManual !== undefined) {
+                   puntosObtenidos = Number(respObjeto.puntajeManual);
+                   esCorrecto = puntosObtenidos > 0;
+                 } else {
+                   puntosObtenidos = 0;
+                   esCorrecto = false; 
+                 }
+              } else {
+                // LÓGICA AUTOMÁTICA
+                const opcionCorrecta = ej.opciones?.find((o: any) => o.is_correcta);
+                const idUsuario = String(respuestaUsuario || '').trim();
+                const idCorrecta = String(opcionCorrecta?.id || '').trim();
+
+                if (idCorrecta && idUsuario === idCorrecta) {
+                  esCorrecto = true;
+                  puntosObtenidos = Number(ej.puntos);
+                }
               }
-            }
 
-            // Determinar color del borde
-            let borderColor = esCorrecto ? '6px solid #2E7D32' : '6px solid #D32F2F';
-            if (ej.tipo === 'abierta' && !fueCorregido) {
-                borderColor = '6px solid #ED6C02'; 
-            }
+              // Determinar color del borde
+              let borderColor = esCorrecto ? '6px solid #2E7D32' : '6px solid #D32F2F';
+              if (isTipoAbierta && !fueCorregido) {
+                  borderColor = '6px solid #ED6C02'; 
+              }
 
-            return (
-              <Card key={ej.id} sx={{ mb: 3, borderRadius: 2, borderLeft: borderColor }}>
-                <CardContent sx={{ p: 3 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Typography variant="subtitle2" color="text.secondary">Pregunta {idx + 1}</Typography>
-                    
-                    <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="subtitle2" fontWeight="bold" color={esCorrecto ? 'success.main' : (ej.tipo === 'abierta' && !fueCorregido ? 'warning.main' : 'error.main')}>
-                            {puntosObtenidos} / {ej.puntos} puntos
-                        </Typography>
+              return (
+                <Card key={ej.id} sx={{ mb: 3, borderRadius: 2, borderLeft: borderColor }}>
+                  <CardContent sx={{ p: 3 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                      <Typography variant="subtitle2" color="text.secondary">Pregunta {idx + 1}</Typography>
+                      
+                      <Box sx={{ textAlign: 'right' }}>
+                          <Typography variant="subtitle2" fontWeight="bold" color={esCorrecto ? 'success.main' : (isTipoAbierta && !fueCorregido ? 'warning.main' : 'error.main')}>
+                              {puntosObtenidos} / {ej.puntos} puntos
+                          </Typography>
 
-                        {fueCorregido && (
-                            <Typography variant="caption" display="block" sx={{ color: '#1976D2', fontWeight: 'bold', mt: 0.5 }}>
-                                Corregido
-                            </Typography>
-                        )}
+                          {fueCorregido && (
+                              <Typography variant="caption" display="block" sx={{ color: '#1976D2', fontWeight: 'bold', mt: 0.5 }}>
+                                  Corregido
+                              </Typography>
+                          )}
+                      </Box>
                     </Box>
-                  </Box>
 
-                  <Typography variant="h6" gutterBottom sx={{ mb: 3, fontWeight: 500 }}>{ej.enunciado}</Typography>
+                    {/* ENUNCIADO CON LATEX */}
+                    <Typography variant="h6" gutterBottom sx={{ mb: 3, fontWeight: 500 }} component="div">
+                      <MathJax dynamic>{ej.enunciado}</MathJax>
+                    </Typography>
 
-                  {/* Opciones Renderizadas */}
-                  {(ej.tipo === 'multiple-choice' || ej.tipo === 'true_false') && (
-                    <Box>
-                      {ej.opciones.map((op: any) => {
-                        // Lógica visual de opciones también BLINDADA
-                        const opId = String(op.id).trim();
-                        const userResId = String(respuestaUsuario || '').trim();
-                        
-                        const isSelected = userResId === opId;
-                        const isCorrect = op.is_correcta;
-                        
-                        let bgcolor = '#FAFAFA';
-                        let borderColorOp = '#e0e0e0';
-                        let icon = <Radio disabled checked={isSelected} />;
-                        
-                        if (isCorrect) {
-                          bgcolor = '#E8F5E9'; 
-                          borderColorOp = '#2E7D32';
-                          icon = isSelected ? <CheckCircle color="success" /> : <Check color="success" />;
-                        } else if (isSelected && !isCorrect) {
-                          bgcolor = '#FFEBEE'; 
-                          borderColorOp = '#D32F2F';
-                          icon = <Cancel color="error" />;
-                        }
+                    {/* OPCIONES RENDERIZADAS (Multiple Choice / True False / Latex con opciones) */}
+                    {!isTipoAbierta && ej.opciones && (
+                      <Box>
+                        {ej.opciones.map((op: any) => {
+                          const opId = String(op.id).trim();
+                          const userResId = String(respuestaUsuario || '').trim();
+                          
+                          const isSelected = userResId === opId;
+                          const isCorrect = op.is_correcta;
+                          
+                          let bgcolor = '#FAFAFA';
+                          let borderColorOp = '#e0e0e0';
+                          let icon = <Radio disabled checked={isSelected} />;
+                          
+                          if (isCorrect) {
+                            bgcolor = '#E8F5E9'; 
+                            borderColorOp = '#2E7D32';
+                            icon = isSelected ? <CheckCircle color="success" /> : <Check color="success" />;
+                          } else if (isSelected && !isCorrect) {
+                            bgcolor = '#FFEBEE'; 
+                            borderColorOp = '#D32F2F';
+                            icon = <Cancel color="error" />;
+                          }
 
-                        return (
-                          <Paper 
-                            key={op.id} 
-                            variant="outlined" 
-                            sx={{ 
-                              display: 'flex', alignItems: 'center', p: 1.5, mb: 1,
-                              bgcolor, borderColor: borderColorOp, borderWidth: (isSelected || isCorrect) ? 2 : 1
-                            }}
-                          >
-                            <Box sx={{ mr: 1, display: 'flex' }}>{icon}</Box>
-                            <Typography sx={{ flex: 1, fontWeight: isCorrect ? 600 : 400 }}>{op.texto}</Typography>
-                            {isCorrect && <Typography variant="caption" color="success.main" sx={{ fontWeight: 'bold', ml: 1 }}>Correcta</Typography>}
-                            {isSelected && !isCorrect && <Typography variant="caption" color="error.main" sx={{ fontWeight: 'bold', ml: 1 }}>Tu respuesta</Typography>}
-                          </Paper>
-                        );
-                      })}
-                    </Box>
-                  )}
+                          return (
+                            <Paper 
+                              key={op.id} 
+                              variant="outlined" 
+                              sx={{ 
+                                display: 'flex', alignItems: 'center', p: 1.5, mb: 1,
+                                bgcolor, borderColor: borderColorOp, borderWidth: (isSelected || isCorrect) ? 2 : 1
+                              }}
+                            >
+                              <Box sx={{ mr: 1, display: 'flex' }}>{icon}</Box>
+                              {/* OPCIÓN CON LATEX */}
+                              <Typography sx={{ flex: 1, fontWeight: isCorrect ? 600 : 400 }} component="div">
+                                <MathJax inline>{op.texto}</MathJax>
+                              </Typography>
+                              
+                              {isCorrect && <Typography variant="caption" color="success.main" sx={{ fontWeight: 'bold', ml: 1 }}>Correcta</Typography>}
+                              {isSelected && !isCorrect && <Typography variant="caption" color="error.main" sx={{ fontWeight: 'bold', ml: 1 }}>Tu respuesta</Typography>}
+                            </Paper>
+                          );
+                        })}
+                      </Box>
+                    )}
 
-                  {ej.tipo === 'abierta' && (
-                    <Box sx={{ bgcolor: '#F5F5F5', p: 2, borderRadius: 1, mt: 1 }}>
-                      <Typography variant="caption" color="text.secondary">Tu respuesta:</Typography>
-                      <Typography sx={{ fontStyle: 'italic', mt: 1 }}>{respuestaUsuario || '(Sin respuesta)'}</Typography>
-                    </Box>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </Container>
-      </Box>
+                    {/* RESPUESTA ABIERTA (O Latex sin opciones) */}
+                    {isTipoAbierta && (
+                      <Box sx={{ bgcolor: '#F5F5F5', p: 2, borderRadius: 1, mt: 1 }}>
+                        <Typography variant="caption" color="text.secondary">Tu respuesta:</Typography>
+                        <Typography sx={{ fontStyle: 'italic', mt: 1 }}>{respuestaUsuario || '(Sin respuesta)'}</Typography>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Container>
+        </Box>
+      </MathJaxContext>
     );
   }
 
@@ -538,114 +556,133 @@ export default function RealizarActividadPage() {
   
   const currentEjercicio = ejercicios[activeStep];
   const progress = ((activeStep + 1) / ejercicios.length) * 100;
-  const isMultipleChoice = currentEjercicio.tipo === 'multiple-choice';
+  const isMultipleChoice = currentEjercicio.tipo === 'multiple-choice' || currentEjercicio.tipo === 'latex';
   const isTrueFalse = currentEjercicio.tipo === 'true_false'; 
-  const isAbierta = currentEjercicio.tipo === 'abierta';
+  const isAbierta = currentEjercicio.tipo === 'abierta'
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pb: 8 }}>
-      <Box sx={{ 
-        position: 'sticky', top: 0, zIndex: 1100, 
-        background: 'linear-gradient(90deg, #8B4513 0%, #654321 100%)', 
-        color: 'white', px: 3, py: 2,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-      }}>
-        <Box>
-           <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: 0.5 }}>{actividad.nombre}</Typography>
-           <Typography variant="caption" sx={{ opacity: 0.9 }}>Pregunta {activeStep + 1} de {ejercicios.length}</Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {saving && <CircularProgress size={20} sx={{ color: '#F5DEB3' }} />}
-          
-          {actividad.tipo === 'evaluacion' && actividad.fecha_fin && (
-            <ExamTimer fechaFin={actividad.fecha_fin} onExpire={handleTimeExpire} />
-          )}
-        </Box>
-      </Box>
-
-      <Container maxWidth="md" sx={{ mt: 5 }}>
-        <LinearProgress 
-           variant="determinate" 
-           value={progress} 
-           sx={{ height: 10, borderRadius: 5, mb: 4, bgcolor: 'rgba(139,69,19,0.2)', '& .MuiLinearProgress-bar': { bgcolor: '#D2691E' } }} 
-        />
-
-        <Card sx={{ minHeight: 450, display: 'flex', flexDirection: 'column', p: 2, boxShadow: '0 8px 24px rgba(62,39,35,0.15)', borderRadius: 3 }}>
-          <CardContent sx={{ flex: 1, p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-               <Chip label={`Ejercicio ${activeStep + 1}`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }} />
-               <Chip label={`${currentEjercicio.puntos} pts`} variant="outlined" sx={{ borderColor: '#D2691E', color: '#D2691E', fontWeight: 600 }} />
-            </Box>
-            <Typography variant="h5" gutterBottom sx={{ mb: 4, fontWeight: 500, color: '#3E2723' }}>{currentEjercicio.enunciado}</Typography>
-            <Divider sx={{ mb: 4, borderColor: 'rgba(139,69,19,0.1)' }} />
-
-            <Box>
-              {(isMultipleChoice || isTrueFalse) && (
-                <FormControl component="fieldset" sx={{ width: '100%' }}>
-                  <RadioGroup
-                    value={respuestasLocales[currentEjercicio.id] || ''}
-                    onChange={(e) => handleAnswerChange(currentEjercicio.id, e.target.value)}
-                  >
-                    {(currentEjercicio.opciones || []).map((op: any) => {
-                      const isSelected = respuestasLocales[currentEjercicio.id] === op.id;
-                      return (
-                        <Paper 
-                          key={op.id} 
-                          variant="outlined" 
-                          component={Button} 
-                          onClick={() => handleAnswerChange(currentEjercicio.id, op.id)}
-                          sx={{ 
-                             mb: 2, p: 1.5, px: 2, borderRadius: 2, textAlign: 'left', textTransform: 'none', display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-                             borderColor: isSelected ? '#D2691E' : '#e0e0e0', borderWidth: isSelected ? 2 : 1,
-                             bgcolor: isSelected ? '#FFF3E0' : '#FAFAFA', color: isSelected ? '#D2691E' : '#5D4037',
-                             '&:hover': { bgcolor: isSelected ? '#FFE0B2' : '#F5F5F5', borderColor: '#D2691E' }
-                          }}
-                        >
-                          <Radio checked={isSelected} sx={{ color: '#8B4513', '&.Mui-checked': { color: '#D2691E' }, mr: 2 }} />
-                          <Typography variant="body1" fontWeight={isSelected ? 600 : 400}>{op.texto}</Typography>
-                        </Paper>
-                      );
-                    })}
-                  </RadioGroup>
-                </FormControl>
-              )}
-
-              {isAbierta && (
-                <TextField
-                  fullWidth multiline rows={8} placeholder="Escribe tu respuesta detallada aquí..."
-                  value={respuestasLocales[currentEjercicio.id] || ''}
-                  onChange={(e) => handleAnswerChange(currentEjercicio.id, e.target.value)}
-                  variant="outlined"
-                  sx={{ bgcolor: '#FAFAFA', '& .MuiOutlinedInput-root': { '&.Mui-focused fieldset': { borderColor: '#8B4513' } } }}
-                />
-              )}
-              
-              {!isMultipleChoice && !isTrueFalse && !isAbierta && (
-                <Alert severity="warning">Tipo de ejercicio desconocido: {currentEjercicio.tipo}</Alert>
-              )}
-            </Box>
-          </CardContent>
-
-          <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-            <Button startIcon={<NavigateBefore />} disabled={activeStep === 0} onClick={() => setActiveStep(prev => prev - 1)} size="large" sx={{ color: '#5D4037' }}>Anterior</Button>
-            {activeStep === ejercicios.length - 1 ? (
-              <Button variant="contained" endIcon={<CheckCircle />} onClick={handleFinalizar} size="large" sx={{ bgcolor: '#D2691E', fontWeight: 'bold', px: 4, '&:hover': { bgcolor: '#BF360C' } }}>Finalizar</Button>
-            ) : (
-              <Button variant="contained" endIcon={<NavigateNext />} onClick={() => setActiveStep(prev => prev + 1)} size="large" sx={{ bgcolor: '#8B4513', '&:hover': { bgcolor: '#654321' } }}>Siguiente</Button>
+    <MathJaxContext version={3} config={mathjaxConfig}>
+      <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pb: 8 }}>
+        <Box sx={{ 
+          position: 'sticky', top: 0, zIndex: 1100, 
+          background: 'linear-gradient(90deg, #8B4513 0%, #654321 100%)', 
+          color: 'white', px: 3, py: 2,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+        }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, letterSpacing: 0.5 }}>{actividad.nombre}</Typography>
+            <Typography variant="caption" sx={{ opacity: 0.9 }}>Pregunta {activeStep + 1} de {ejercicios.length}</Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {saving && <CircularProgress size={20} sx={{ color: '#F5DEB3' }} />}
+            
+            {actividad.tipo === 'evaluacion' && actividad.fecha_fin && (
+              <ExamTimer fechaFin={actividad.fecha_fin} onExpire={handleTimeExpire} />
             )}
           </Box>
-        </Card>
-      </Container>
+        </Box>
 
-      <Dialog open={openFinishDialog} onClose={() => setOpenFinishDialog(false)}>
-        <DialogTitle sx={{ fontWeight: 700, color: '#3E2723' }}>Finalizar evaluación</DialogTitle>
-        <DialogContent><Typography sx={{ color: '#5D4037' }}>¿Finalizar evaluación? No podrás cambiar tus respuestas.</Typography></DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setOpenFinishDialog(false)} sx={{ color: '#5D4037' }}>Cancelar</Button>
-          <Button variant="contained" onClick={handleConfirmFinalizar} sx={{ bgcolor: '#D2691E', '&:hover': { bgcolor: '#BF360C' } }}>Finalizar</Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+        <Container maxWidth="md" sx={{ mt: 5 }}>
+          <LinearProgress 
+            variant="determinate" 
+            value={progress} 
+            sx={{ height: 10, borderRadius: 5, mb: 4, bgcolor: 'rgba(139,69,19,0.2)', '& .MuiLinearProgress-bar': { bgcolor: '#D2691E' } }} 
+          />
+
+          <Card sx={{ minHeight: 450, display: 'flex', flexDirection: 'column', p: 2, boxShadow: '0 8px 24px rgba(62,39,35,0.15)', borderRadius: 3 }}>
+            <CardContent sx={{ flex: 1, p: 3 }}>
+              {/* Cabecera del Ejercicio */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+                 <Chip label={`Ejercicio ${activeStep + 1}`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }} />
+                 <Chip label={`${currentEjercicio.puntos} pts`} variant="outlined" sx={{ borderColor: '#D2691E', color: '#D2691E', fontWeight: 600 }} />
+              </Box>
+              
+              {/* ENUNCIADO CON SOPORTE LATEX */}
+              <Typography variant="h5" gutterBottom sx={{ mb: 4, fontWeight: 500, color: '#3E2723' }} component="div">
+                <MathJax dynamic>{currentEjercicio.enunciado}</MathJax>
+              </Typography>
+              
+              <Divider sx={{ mb: 4, borderColor: 'rgba(139,69,19,0.1)' }} />
+
+              <Box>
+                {/* OPCIÓN 1: MULTIPLE CHOICE / TRUE FALSE / LATEX CON OPCIONES */}
+                {(isMultipleChoice || isTrueFalse) && (
+                  <FormControl component="fieldset" sx={{ width: '100%' }}>
+                    <RadioGroup
+                      value={respuestasLocales[currentEjercicio.id] || ''}
+                      onChange={(e) => handleAnswerChange(currentEjercicio.id, e.target.value)}
+                    >
+                      {(currentEjercicio.opciones || []).map((op: any) => {
+                        const isSelected = respuestasLocales[currentEjercicio.id] === op.id;
+                        return (
+                          <Paper 
+                            key={op.id} 
+                            variant="outlined" 
+                            component={Button} 
+                            onClick={() => handleAnswerChange(currentEjercicio.id, op.id)}
+                            sx={{ 
+                               mb: 2, p: 1.5, px: 2, borderRadius: 2, textAlign: 'left', textTransform: 'none', display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+                               borderColor: isSelected ? '#D2691E' : '#e0e0e0', borderWidth: isSelected ? 2 : 1,
+                               bgcolor: isSelected ? '#FFF3E0' : '#FAFAFA', color: isSelected ? '#D2691E' : '#5D4037',
+                               '&:hover': { bgcolor: isSelected ? '#FFE0B2' : '#F5F5F5', borderColor: '#D2691E' }
+                            }}
+                          >
+                            <Radio checked={isSelected} sx={{ color: '#8B4513', '&.Mui-checked': { color: '#D2691E' }, mr: 2 }} />
+                            
+                            {/* TEXTO DE LA OPCIÓN CON SOPORTE LATEX */}
+                            <Box sx={{ width: '100%' }}>
+                               <Typography variant="body1" fontWeight={isSelected ? 600 : 400} component="div">
+                                  <MathJax inline dynamic>{op.texto}</MathJax>
+                               </Typography>
+                            </Box>
+
+                          </Paper>
+                        );
+                      })}
+                    </RadioGroup>
+                  </FormControl>
+                )}
+
+                {/* OPCIÓN 2: PREGUNTA ABIERTA / LATEX SIN OPCIONES */}
+                {isAbierta && (
+                  <TextField
+                    fullWidth multiline rows={8} placeholder="Escribe tu respuesta detallada aquí..."
+                    value={respuestasLocales[currentEjercicio.id] || ''}
+                    onChange={(e) => handleAnswerChange(currentEjercicio.id, e.target.value)}
+                    variant="outlined"
+                    sx={{ bgcolor: '#FAFAFA', '& .MuiOutlinedInput-root': { '&.Mui-focused fieldset': { borderColor: '#8B4513' } } }}
+                  />
+                )}
+                
+                {/* ALERTA DE FALLBACK */}
+                {!isMultipleChoice && !isTrueFalse && !isAbierta && (
+                  <Alert severity="warning">Tipo de ejercicio desconocido: {currentEjercicio.tipo}</Alert>
+                )}
+              </Box>
+            </CardContent>
+
+            {/* BOTONES DE NAVEGACIÓN */}
+            <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+              <Button startIcon={<NavigateBefore />} disabled={activeStep === 0} onClick={() => setActiveStep(prev => prev - 1)} size="large" sx={{ color: '#5D4037' }}>Anterior</Button>
+              {activeStep === ejercicios.length - 1 ? (
+                <Button variant="contained" endIcon={<CheckCircle />} onClick={handleFinalizar} size="large" sx={{ bgcolor: '#D2691E', fontWeight: 'bold', px: 4, '&:hover': { bgcolor: '#BF360C' } }}>Finalizar</Button>
+              ) : (
+                <Button variant="contained" endIcon={<NavigateNext />} onClick={() => setActiveStep(prev => prev + 1)} size="large" sx={{ bgcolor: '#8B4513', '&:hover': { bgcolor: '#654321' } }}>Siguiente</Button>
+              )}
+            </Box>
+          </Card>
+        </Container>
+
+        <Dialog open={openFinishDialog} onClose={() => setOpenFinishDialog(false)}>
+          <DialogTitle sx={{ fontWeight: 700, color: '#3E2723' }}>Finalizar evaluación</DialogTitle>
+          <DialogContent><Typography sx={{ color: '#5D4037' }}>¿Finalizar evaluación? No podrás cambiar tus respuestas.</Typography></DialogContent>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={() => setOpenFinishDialog(false)} sx={{ color: '#5D4037' }}>Cancelar</Button>
+            <Button variant="contained" onClick={handleConfirmFinalizar} sx={{ bgcolor: '#D2691E', '&:hover': { bgcolor: '#BF360C' } }}>Finalizar</Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    </MathJaxContext>
   );
 }
