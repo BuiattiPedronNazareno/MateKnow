@@ -109,9 +109,9 @@ window.testSocket.emit('select-question', { lobbyId: 'lobby_1763506278398_zddfjk
 
 
 
-Cambiar estilos de boton en clase y de busqueda de lobby
+Ranking de la clase? metricas
 
-caso de empate (actualmente se elige un ganador random)
+menu especial cuando alguien abandona.
 
-ranking de la clase?
+boton de jugar otra vez, que pasa exactamente
 

@@ -594,21 +594,22 @@ export default function DetalleClasePage() {
                 startIcon={<SportsEsports />}
                 onClick={() => router.push(`/versus?claseId=${claseId}`)}
                 sx={{
-                  background: 'linear-gradient(135deg, #7B1FA2 0%, #E91E63 100%)',
+                  mt: 2,
+                  background: 'linear-gradient(135deg, #8B4513 0%, #D2691E 100%)',
                   color: 'white',
                   fontWeight: 600,
                   borderRadius: 2,
                   px: 3,
-                  boxShadow: '0 4px 15px rgba(233, 30, 99, 0.3)',
+                  boxShadow: '0 4px 15px rgba(139, 69, 19, 0.3)',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #6A1B9A 0%, #C2185B 100%)',
+                    background: 'linear-gradient(135deg, #654321 0%, #A0522D 100%)',
                     transform: 'scale(1.02)',
-                    boxShadow: '0 6px 20px rgba(233, 30, 99, 0.4)',
+                    boxShadow: '0 6px 20px rgba(139, 69, 19, 0.4)',
                   },
                   transition: 'all 0.2s ease',
                 }}
               >
-                ⚔️ Modo Versus
+                Modo Versus
               </Button>
             </Box>
           </Box>
