@@ -74,6 +74,8 @@ export default function RealizarActividadPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   
+  const initialized = useRef(false);
+
   const rawClaseId = params?.claseId;
   const claseId = (Array.isArray(rawClaseId) ? rawClaseId[0] : rawClaseId) as string;
   const rawActividadId = params?.actividadId;
@@ -101,10 +103,18 @@ export default function RealizarActividadPage() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    if (actividadId && claseId) {
-        initEvaluation();
-    }
+    // Evitar que corra si no hay IDs o si ya se inicializó
+    if (!claseId || !actividadId || initialized.current) return;
+    
+    // Marcar como inicializado inmediatamente
+    initialized.current = true;
+    
+    initEvaluation();
+    
+    // Cleanup opcional: si desmonta, permitir reiniciar (útil en dev)
+    return () => { initialized.current = false; };
   }, [actividadId, claseId, isReviewModeParam, intentoIdParam]);
+
 
   const initEvaluation = async () => {
     try {
@@ -200,8 +210,9 @@ export default function RealizarActividadPage() {
         respuesta: v
       }));
 
-      const res = await actividadService.finalizarIntento(claseId, intento.id, respuestasArray);
-      
+      const payload = { respuestas: respuestasArray };
+      const res = await actividadService.finalizarIntento(claseId, intento.id, payload);
+
       // Actualizar estado local para mostrar éxito sin recargar
       setScore(res.puntaje);
       setFinished(true);
@@ -359,38 +370,45 @@ export default function RealizarActividadPage() {
           </Button>
 
           {ejercicios.map((ej, idx) => {
-            // Recuperar el objeto de respuesta COMPLETO del intento (con metadatos de corrección)
-            const respObjeto = intento?.respuestas?.find((r: any) => r.ejercicioId === ej.id);
-            const respuestaUsuario = respObjeto?.respuesta; // Texto o ID seleccionado
+            // 1. BÚSQUEDA ROBUSTA DE LA RESPUESTA DEL USUARIO
+            // Convertimos a String ambos IDs para asegurar que se encuentren
+            const respObjeto = intento?.respuestas?.find((r: any) => 
+              String(r.ejercicioId).trim() === String(ej.id).trim()
+            );
+            
+            const respuestaUsuario = respObjeto?.respuesta; 
             
             let esCorrecto = false;
             let puntosObtenidos = 0;
             let fueCorregido = !!respObjeto?.corregido;
 
+            // 2. LÓGICA DE CORRECCIÓN (Igualando a la del Backend)
             if (ej.tipo === 'abierta') {
-               // Lógica para preguntas abiertas
                if (fueCorregido && respObjeto.puntajeManual !== undefined) {
-                 // Si el profesor ya corrigió
                  puntosObtenidos = Number(respObjeto.puntajeManual);
-                 esCorrecto = puntosObtenidos > 0; // Verde si > 0, Rojo si 0
+                 esCorrecto = puntosObtenidos > 0;
                } else {
-                 // Aún no corregido (Pendiente)
                  puntosObtenidos = 0;
                  esCorrecto = false; 
                }
             } else {
-              // Lógica automática (MC / VF)
+              // LÓGICA AUTOMÁTICA BLINDADA
               const opcionCorrecta = ej.opciones?.find((o: any) => o.is_correcta);
-              if (opcionCorrecta && respuestaUsuario === opcionCorrecta.id) {
+              
+              // Normalización total para comparar
+              const idUsuario = String(respuestaUsuario || '').trim();
+              const idCorrecta = String(opcionCorrecta?.id || '').trim();
+
+              if (idCorrecta && idUsuario === idCorrecta) {
                 esCorrecto = true;
-                puntosObtenidos = ej.puntos;
+                puntosObtenidos = Number(ej.puntos);
               }
             }
 
             // Determinar color del borde
             let borderColor = esCorrecto ? '6px solid #2E7D32' : '6px solid #D32F2F';
             if (ej.tipo === 'abierta' && !fueCorregido) {
-                borderColor = '6px solid #ED6C02'; // Naranja para pendiente
+                borderColor = '6px solid #ED6C02'; 
             }
 
             return (
@@ -399,7 +417,6 @@ export default function RealizarActividadPage() {
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                     <Typography variant="subtitle2" color="text.secondary">Pregunta {idx + 1}</Typography>
                     
-                    {/* SECCIÓN DE PUNTAJE Y ESTADO DE CORRECCIÓN */}
                     <Box sx={{ textAlign: 'right' }}>
                         <Typography variant="subtitle2" fontWeight="bold" color={esCorrecto ? 'success.main' : (ej.tipo === 'abierta' && !fueCorregido ? 'warning.main' : 'error.main')}>
                             {puntosObtenidos} / {ej.puntos} puntos
@@ -407,13 +424,7 @@ export default function RealizarActividadPage() {
 
                         {fueCorregido && (
                             <Typography variant="caption" display="block" sx={{ color: '#1976D2', fontWeight: 'bold', mt: 0.5 }}>
-                                Corregido por el profesor {respObjeto.correctedAt ? `el ${new Date(respObjeto.correctedAt).toLocaleString()}` : ''}
-                            </Typography>
-                        )}
-
-                        {ej.tipo === 'abierta' && !fueCorregido && (
-                            <Typography variant="caption" display="block" sx={{ color: '#ED6C02', fontStyle: 'italic', mt: 0.5 }}>
-                                Pendiente de corrección
+                                Corregido
                             </Typography>
                         )}
                     </Box>
@@ -425,20 +436,24 @@ export default function RealizarActividadPage() {
                   {(ej.tipo === 'multiple-choice' || ej.tipo === 'true_false') && (
                     <Box>
                       {ej.opciones.map((op: any) => {
-                        const isSelected = respuestaUsuario === op.id;
+                        // Lógica visual de opciones también BLINDADA
+                        const opId = String(op.id).trim();
+                        const userResId = String(respuestaUsuario || '').trim();
+                        
+                        const isSelected = userResId === opId;
                         const isCorrect = op.is_correcta;
                         
                         let bgcolor = '#FAFAFA';
-                        let borderColor = '#e0e0e0';
+                        let borderColorOp = '#e0e0e0';
                         let icon = <Radio disabled checked={isSelected} />;
                         
                         if (isCorrect) {
                           bgcolor = '#E8F5E9'; 
-                          borderColor = '#2E7D32';
+                          borderColorOp = '#2E7D32';
                           icon = isSelected ? <CheckCircle color="success" /> : <Check color="success" />;
                         } else if (isSelected && !isCorrect) {
                           bgcolor = '#FFEBEE'; 
-                          borderColor = '#D32F2F';
+                          borderColorOp = '#D32F2F';
                           icon = <Cancel color="error" />;
                         }
 
@@ -448,7 +463,7 @@ export default function RealizarActividadPage() {
                             variant="outlined" 
                             sx={{ 
                               display: 'flex', alignItems: 'center', p: 1.5, mb: 1,
-                              bgcolor, borderColor, borderWidth: (isSelected || isCorrect) ? 2 : 1
+                              bgcolor, borderColor: borderColorOp, borderWidth: (isSelected || isCorrect) ? 2 : 1
                             }}
                           >
                             <Box sx={{ mr: 1, display: 'flex' }}>{icon}</Box>

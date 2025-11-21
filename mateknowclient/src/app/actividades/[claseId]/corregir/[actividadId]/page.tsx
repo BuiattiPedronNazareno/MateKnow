@@ -173,9 +173,21 @@ export default function CorregirActividadPage() {
                     <Chip label={`Puntaje Total: ${selectedIntento.puntaje}`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 'bold' }} />
                  </Paper>
 
-                 {actividad.ejercicios?.map((ej: any, index: number) => {
+                {actividad.ejercicios?.map((ej: any, index: number) => {
                    const resp = selectedIntento.respuestas?.find((r: any) => r.ejercicioId === ej.id);
-                   const respuestaTexto = resp?.respuesta;
+                   
+                   // 1. OBTENER RESPUESTA RAW
+                   let respuestaTexto = resp?.respuesta;
+
+                   // 2. FIX UUID: Si es Multiple Choice, buscamos el texto de la opción correspondiente
+                   if ((ej.tipo === 'multiple-choice' || ej.tipo === 'true_false') && ej.opciones) {
+                      const opcionEncontrada = ej.opciones.find((op: any) => String(op.id) === String(respuestaTexto));
+                      if (opcionEncontrada) {
+                          // Mostramos el texto (ej: "Verdadero") en lugar del UUID
+                          respuestaTexto = opcionEncontrada.texto; 
+                      }
+                   }
+
                    const puntajeActual = resp?.puntajeManual ?? (resp?.corregido ? resp?.puntajeManual : (ej.tipo !== 'abierta' ? 'Auto' : 0));
 
                    return (
@@ -188,10 +200,10 @@ export default function CorregirActividadPage() {
                          
                          <Typography variant="h6" gutterBottom sx={{ color: '#3E2723' }}>{ej.enunciado}</Typography>
                          
-                         {/* Respuesta del Alumno */}
+                         {/* Respuesta del Alumno (AHORA TRADUCIDA) */}
                          <Box sx={{ bgcolor: '#FAFAFA', p: 2, borderRadius: 1, mb: 2, border: '1px solid #EEE' }}>
                            <Typography variant="caption" color="text.secondary">Respuesta del alumno:</Typography>
-                           <Typography sx={{ mt: 1, whiteSpace: 'pre-wrap', color: '#000' }}>
+                           <Typography sx={{ mt: 1, whiteSpace: 'pre-wrap', color: '#000', fontWeight: 500 }}>
                              {respuestaTexto ? String(respuestaTexto) : <span style={{fontStyle:'italic', color:'#999'}}>Sin respuesta</span>}
                            </Typography>
                          </Box>
@@ -199,6 +211,7 @@ export default function CorregirActividadPage() {
                          <Divider sx={{ my: 2 }} />
                          
                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#FFF8E1', p: 2, borderRadius: 2 }}>
+                            {/* ... El resto del bloque de calificación sigue igual ... */}
                             <Typography variant="body2" fontWeight="bold" sx={{ color: '#5D4037' }}>Calificación:</Typography>
                             {ej.tipo === 'abierta' ? (
                               <>

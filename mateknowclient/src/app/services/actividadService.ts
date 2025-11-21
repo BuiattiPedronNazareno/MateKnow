@@ -98,8 +98,8 @@ export const actividadService = {
 
   // 4. Finalizar Intento
   // URL: /clases/:claseId/actividades/intento/:intentoId/finalizar
-  async finalizarIntento(claseId: string, intentoId: string, respuestas?: any[]): Promise<{ message: string; puntaje: number }> {
-    const response = await api.post(`/clases/${claseId}/actividades/intento/${intentoId}/finalizar`, { respuestas });
+  async finalizarIntento(claseId: string, intentoId: string, payload?: any): Promise<{ message: string; puntaje: number }> {
+    const response = await api.post(`/clases/${claseId}/actividades/intento/${intentoId}/finalizar`, payload);
     return response.data;
   },
 
