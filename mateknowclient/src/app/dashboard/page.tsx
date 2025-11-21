@@ -44,6 +44,8 @@ import {
 import { claseService, Clase } from '../services/claseService';
 import { authService } from '../services/authService';
 
+import MateIcon from '../components/icons/MateIcon';
+
 export default function DashboardPage() {
   const router = useRouter();
   const theme = useTheme();
@@ -142,11 +144,11 @@ export default function DashboardPage() {
         backdropFilter: 'blur(12px)',
       }}>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <EmojiFoodBeverageRounded sx={{ color: 'primary.main', fontSize: 32 }} />
+          <MateIcon sx={{ color: 'primary.main', fontSize: 40 }} />
           <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary', letterSpacing: '-0.03em' }}>
-            MateKnow
-          </Typography>
-        </Stack>
+              MateKnow
+            </Typography>
+          </Stack>
 
         <Stack direction="row" spacing={1}>
           <IconButton size="small" color="primary">
