@@ -374,7 +374,7 @@ export class ActividadService {
             puntos,
             metadata,
             tipo_ejercicio ( key ),
-            opcion_ejercicio (id, texto)
+            opcion_ejercicio (id, texto, is_correcta) 
           )
         )
       `)
@@ -386,6 +386,15 @@ export class ActividadService {
       throw new NotFoundException('Actividad no encontrada');
     }
 
+    // Verificar si es profesor para saber si mostrar respuestas
+    const { data: inscripcion } = await supabase
+      .from('inscripcion')
+      .select('is_profesor')
+      .eq('clase_id', data.clase_id)
+      .eq('usuario_id', userId)
+      .maybeSingle();
+
+    const isProfesor = !!inscripcion?.is_profesor;
     const actividad: any = data;
 
     const ejercicios = (actividad.actividad_ejercicio || [])
@@ -397,13 +406,11 @@ export class ActividadService {
          let tipoKey = 'desconocido';
          const te = ej.tipo_ejercicio;
          
-         // 1. Intentar obtener key del tipo
          if (te) {
            if (Array.isArray(te) && te.length > 0) tipoKey = te[0].key;
            else if (te.key) tipoKey = te.key;
          }
 
-         // 2. Fallbacks si el tipo falla
          if ((tipoKey === 'desconocido' || !tipoKey) && ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
             tipoKey = 'multiple-choice';
          }
@@ -411,10 +418,20 @@ export class ActividadService {
             tipoKey = 'abierta';
          }
 
+         // LÓGICA DE SEGURIDAD:
+         // Si NO es profesor, eliminamos el campo 'is_correcta' de las opciones
+         const opciones = (ej.opcion_ejercicio || []).map((op: any) => {
+            if (!isProfesor) {
+                const { is_correcta, ...resto } = op;
+                return resto;
+            }
+            return op;
+         });
+
          return {
             ...ej,
             tipo: tipoKey,
-            opciones: ej.opcion_ejercicio || []
+            opciones: opciones
          };
       })
       .filter((e: any) => e !== null);
