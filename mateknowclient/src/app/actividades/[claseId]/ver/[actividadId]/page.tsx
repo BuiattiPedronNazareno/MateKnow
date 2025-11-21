@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { MathJax, MathJaxContext } from "better-react-mathjax";
 import {
   Box,
   Container,
@@ -103,6 +104,12 @@ export default function ActividadVerPage() {
   };
 
   // --- RENDERIZADO ---
+  const wrapLatex = (txt: string) => {
+    const t = txt.trim();
+    if (t.startsWith("$") && t.endsWith("$")) return txt;
+    return txt;
+  };
+
 
   if (loading) {
     return (
@@ -214,9 +221,28 @@ export default function ActividadVerPage() {
                   >
                   <ListItemText
                     primary={
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        {index + 1}. {ej.enunciado || ej.titulo || 'Ejercicio sin título'}
-                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Typography variant="subtitle1" fontWeight="bold">
+                          {index + 1}.
+                        </Typography>
+
+                        {ej.tipo === "latex" ? (
+                          <MathJaxContext
+                            version={3}
+                            config={{
+                              loader: { load: ["input/tex", "output/chtml"] },
+                              tex: {
+                                inlineMath: [["$", "$"]],
+                                displayMath: [],
+                              },
+                            }}
+                          >
+                            <MathJax dynamic>{wrapLatex(ej.enunciado)}</MathJax>
+                          </MathJaxContext>
+                        ) : (
+                          <Typography variant="body1">{ej.enunciado}</Typography>
+                        )}
+                      </Box>
                     }
                     secondary={
                       <Box sx={{ mt: 0.5 }}>
