@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { MathJax, MathJaxContext } from "better-react-mathjax";
 import {
   Box,
   Container,
@@ -18,9 +19,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  IconButton
+  IconButton,
+  Stack,
 } from '@mui/material';
-import { Delete } from '@mui/icons-material'; // Importamos el icono de eliminar
+import { 
+  Delete,
+  Visibility, 
+  VisibilityOff, 
+  CheckCircle, 
+  RadioButtonUnchecked,
+  AddRounded,
+} from '@mui/icons-material'; // Importamos el icono de eliminar
 import { actividadService } from '@/app/services/actividadService';
 import EjercicioForm from '@/app/components/EjercicioForm';
 import { ejercicioService } from '@/app/services/ejercicioService';
@@ -31,6 +40,8 @@ export default function ActividadVerPage() {
   const claseId = params.claseId as string;
   const actividadId = params.actividadId as string;
   const router = useRouter();
+
+  const [verRespuestas, setVerRespuestas] = useState(false);
 
   // --- ESTADOS ---
   const [actividad, setActividad] = useState<any | null>(null);
@@ -103,6 +114,12 @@ export default function ActividadVerPage() {
   };
 
   // --- RENDERIZADO ---
+  const wrapLatex = (txt: string) => {
+    const t = txt.trim();
+    if (t.startsWith("$") && t.endsWith("$")) return txt;
+    return txt;
+  };
+
 
   if (loading) {
     return (
@@ -151,28 +168,28 @@ export default function ActividadVerPage() {
             </Box>
 
             {/* Botones de Acción Principales */}
-            <Box sx={{ mb: 3 }}>
-              {/* Botón para Alumnos: Resolver */}
-              {!isProfesor && actividad.tipo === 'evaluacion' && (
-                <Button 
-                  variant="contained" 
-                  size="large"
-                  onClick={() => router.push(`/actividades/${claseId}/realizar/${actividadId}`)}
-                  sx={{ bgcolor: '#2E7D32', '&:hover': { bgcolor: '#1B5E20' } }}
-                >
-                  Resolver Actividad
-                </Button>
-              )}
-              
-              {/* Botón para Profesores: Agregar Ejercicio */}
+            <Box>
               {isProfesor && (
-                <Button 
-                  variant="contained" 
-                  onClick={() => setOpenCrearEjercicioModal(true)}
-                  sx={{ bgcolor: '#8B4513', '&:hover': { bgcolor: '#654321' } }}
-                >
-                  Agregar ejercicio
-                </Button>
+                <>
+                  {/* NUEVO BOTÓN: Ver/Ocultar Respuestas */}
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    startIcon={verRespuestas ? <VisibilityOff /> : <Visibility />}
+                    onClick={() => setVerRespuestas(!verRespuestas)}
+                    sx={{ mr: 2 }}
+                  >
+                    {verRespuestas ? 'Ocultar Respuestas' : 'Ver Respuestas'}
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    startIcon={<AddRounded />} // Asegúrate de tener AddRounded importado si ya lo usabas
+                    onClick={() => setOpenCrearEjercicioModal(true)}
+                  >
+                    Agregar Ejercicio
+                  </Button>
+                </>
               )}
             </Box>
 
@@ -184,59 +201,128 @@ export default function ActividadVerPage() {
             
             {/* LISTA DE EJERCICIOS */}
             {actividad.ejercicios && actividad.ejercicios.length > 0 ? (
-              <List>
-                {actividad.ejercicios.map((ej: any, index: number) => (
-                  <ListItem 
-                    key={ej.id} 
-                    sx={{ 
-                      alignItems: 'flex-start', 
-                      bgcolor: 'rgba(139, 69, 19, 0.05)', 
-                      mb: 2, 
-                      borderRadius: 2,
-                      border: '1px solid rgba(139, 69, 19, 0.1)'
-                    }}
-                    secondaryAction={
-                      // TACHO DE BASURA (Solo Profesor)
-                      isProfesor && (
-                        <IconButton 
-                          edge="end" 
-                          aria-label="delete"
-                          onClick={() => {
-                            setExerciseToDelete(ej.id);
-                            setOpenDeleteExerciseDialog(true);
-                          }}
-                          sx={{ color: '#D32F2F' }}
-                        >
-                          <Delete />
-                        </IconButton>
-                      )
-                    }
-                  >
-                  <ListItemText
-                    primary={
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        {index + 1}. {ej.enunciado || ej.titulo || 'Ejercicio sin título'}
-                      </Typography>
-                    }
-                    secondary={
-                      <Box sx={{ mt: 0.5 }}>
-                        <Chip 
-                          label={ej.tipo === 'multiple-choice' ? 'Multiple Choice' : ej.tipo === 'true_false' ? 'V/F' : 'Abierta'} 
-                          size="small" 
-                          variant="outlined"
-                          sx={{ mr: 1, height: 20, fontSize: '0.7rem' }} 
-                        />
-                        <Typography variant="caption" component="span" color="text.secondary">
-                          {ej.puntos ? `${ej.puntos} puntos` : '1 punto'}
-                        </Typography>
-                      </Box>
-                    }
-                    
-                    slotProps={{ secondary: { component: 'div' } }}
-                  />
-                  </ListItem>
-                ))}
-              </List>
+              <MathJaxContext
+                version={3}
+                config={{
+                  loader: { load: ["input/tex", "output/chtml"] },
+                  tex: {
+                    inlineMath: [["$", "$"], ["\\(", "\\)"]],
+                    displayMath: [["$$", "$$"]],
+                  },
+                }}
+              >
+                <List>
+                  {actividad.ejercicios.map((ej: any, index: number) => (
+                    <ListItem 
+                      key={ej.id} 
+                      sx={{ 
+                        alignItems: 'flex-start', 
+                        bgcolor: 'rgba(139, 69, 19, 0.05)', 
+                        mb: 2, 
+                        borderRadius: 2,
+                        border: '1px solid rgba(139, 69, 19, 0.1)'
+                      }}
+                      secondaryAction={
+                        isProfesor && (
+                          <IconButton 
+                            edge="end" 
+                            aria-label="delete"
+                            onClick={() => {
+                              setExerciseToDelete(ej.id);
+                              setOpenDeleteExerciseDialog(true);
+                            }}
+                            sx={{ color: '#D32F2F' }}
+                          >
+                            <Delete />
+                          </IconButton>
+                        )
+                      }
+                    >
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
+                          
+                          {/* 1. ENUNCIADO DEL EJERCICIO */}
+                          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            <Typography variant="subtitle1" fontWeight="bold">
+                              {index + 1}.
+                            </Typography>
+
+                            {/* Renderizamos el enunciado usando el contexto padre */}
+                            {ej.tipo === "latex" ? (
+                              <MathJax dynamic>{wrapLatex(ej.enunciado)}</MathJax>
+                            ) : (
+                              <Typography variant="body1">{ej.enunciado}</Typography>
+                            )}
+                          </Box>
+
+                          {/* 2. RESPUESTAS (Visible solo si verRespuestas es true) */}
+                          {verRespuestas && ej.opciones && (
+                            <Box sx={{ mt: 2, pl: 2, width: '100%' }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 'bold' }}>
+                                SOLUCIÓN:
+                              </Typography>
+                              
+                              <Stack spacing={1}>
+                                {ej.opciones.map((opcion: any, idx: number) => {
+                                  const esCorrecta = opcion.esCorrecta || opcion.es_correcta || opcion.is_correcta;
+
+                                  return (
+                                    <Paper
+                                      key={idx}
+                                      variant="outlined"
+                                      sx={{
+                                        p: 1.5,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        // Usamos la variable 'esCorrecta' calculada arriba
+                                        borderColor: esCorrecta ? 'success.main' : 'rgba(0,0,0,0.12)',
+                                        bgcolor: esCorrecta ? 'rgba(46, 125, 50, 0.08)' : 'transparent',
+                                      }}
+                                    >
+                                      {esCorrecta ? (
+                                        <CheckCircle color="success" sx={{ mr: 2, fontSize: 20 }} />
+                                      ) : (
+                                        <RadioButtonUnchecked color="disabled" sx={{ mr: 2, fontSize: 20 }} />
+                                      )}
+                                      
+                                      <Typography 
+                                        variant="body2" 
+                                        component="div"
+                                        sx={{ 
+                                          fontWeight: esCorrecta ? 600 : 400,
+                                          color: esCorrecta ? 'success.dark' : 'text.primary'
+                                        }}
+                                      >
+                                        <MathJax inline>{opcion.texto}</MathJax>
+                                      </Typography>
+                                    </Paper>
+                                  );
+                                })}
+                              </Stack>
+                            </Box>
+                          )}
+                        </Box>
+                      }
+                      secondary={
+                        <Box sx={{ mt: 0.5 }}>
+                          <Chip 
+                            label={ej.tipo === 'multiple-choice' ? 'Multiple Choice' : ej.tipo === 'true_false' ? 'V/F' : 'Abierta'} 
+                            size="small" 
+                            variant="outlined"
+                            sx={{ mr: 1, height: 20, fontSize: '0.7rem' }} 
+                          />
+                          <Typography variant="caption" component="span" color="text.secondary">
+                            {ej.puntos ? `${ej.puntos} puntos` : '1 punto'}
+                          </Typography>
+                        </Box>
+                      }
+                      slotProps={{ secondary: { component: 'div' } }}
+                    />
+                    </ListItem>
+                  ))}
+                </List>
+              </MathJaxContext>
             ) : (
               <Box sx={{ textAlign: 'center', py: 4, bgcolor: '#fafafa', borderRadius: 2 }}>
                 <Typography color="text.secondary">

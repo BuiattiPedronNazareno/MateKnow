@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Box, Container, Paper, Typography } from '@mui/material';
+import MateIcon from './icons/MateIcon';
 
 interface AuthLayoutProps {
   children: React.ReactNode;
@@ -14,7 +15,9 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
     <Box
       sx={{
         minHeight: '100vh',
+        width: '100%',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         background: 'linear-gradient(135deg, #F5DEB3 0%, #DEB887 100%)',
@@ -30,6 +33,9 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
             background: '#FFFFFF',
             position: 'relative',
             overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch', // Asegura que el contenido ocupe el ancho
           }}
         >
           {/* Decoración superior - borde del mate */}
@@ -44,12 +50,14 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
             }}
           />
 
-          {/* Logo/Icono del Mate */}
+          {/* CONTENEDOR DEL ÍCONO (CENTRADO) */}
           <Box
             sx={{
               display: 'flex',
               justifyContent: 'center',
+              alignItems: 'center',
               mb: 3,
+              width: '100%',
             }}
           >
             <Box
@@ -64,20 +72,18 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
                 boxShadow: '0 4px 12px rgba(139, 69, 19, 0.3)',
               }}
             >
-              <Typography
-                variant="h3"
-                sx={{
-                  color: '#FFF',
-                  fontWeight: 'bold',
-                  fontSize: '2.5rem',
-                }}
-              >
-                🧉
-              </Typography>
+              {/* Ícono SVG centrado y blanco */}
+              <MateIcon 
+                sx={{ 
+                  fontSize: '3.5rem', 
+                  color: '#FFFFFF',
+                  display: 'block' // Evita comportamientos inline extraños
+                }} 
+              />
             </Box>
           </Box>
 
-          {/* Título */}
+          {/* Títulos centrados */}
           <Typography
             variant="h1"
             align="center"
@@ -119,10 +125,10 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
             </Typography>
           )}
 
-          {/* Contenido (formulario) */}
+          {/* Formulario */}
           {children}
 
-          {/* Decoración inferior */}
+          {/* Footer centrado */}
           <Box
             sx={{
               mt: 4,
@@ -132,7 +138,7 @@ export default function AuthLayout({ children, title, subtitle }: AuthLayoutProp
             }}
           >
             <Typography variant="body2" color="text.secondary">
-              Aprende jugando 🎯
+              Aprendé jugando
             </Typography>
           </Box>
         </Paper>

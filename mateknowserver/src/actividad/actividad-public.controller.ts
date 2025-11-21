@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Param, Body, Request, HttpCode, HttpStatus,
 import { ActividadService } from './actividad.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { RespuestaParcialDto } from './dto/respuesta-parcial.dto';
-// import { FinalizarIntentoDto } from './dto/finalizar-intento.dto'; 
+import { FinalizarIntentoDto } from './dto/finalizar-intento.dto'; 
 
 @Controller('actividades')
 @UseGuards(AuthGuard)
@@ -37,8 +37,12 @@ export class ActividadPublicController {
   // POST /actividades/intento/:id/finalizar
   @Post('intento/:id/finalizar')
   @HttpCode(HttpStatus.OK)
-  async finalizarIntento(@Param('id') resultadoId: string, @Request() req) {
-    return this.actividadService.finalizarIntento(resultadoId, req.user.id, req.token);
+  async finalizarIntento(
+    @Param('id') resultadoId: string,
+    @Body() dto: FinalizarIntentoDto, 
+    @Request() req
+  ) {
+    return this.actividadService.finalizarIntento(resultadoId, req.user.id, req.token, dto); 
   }
 
   // GET /actividades/:id/revision
