@@ -111,15 +111,53 @@ export class VersusService {
   }
 
   /**
-   * Obtiene preguntas de una clase filtradas para Versus
-   * Solo multiple-choice con is_versus = true
-   */
+ * Obtiene preguntas de una clase filtradas para Versus
+ * Solo multiple-choice con is_versus = true
+ * OPTIMIZADO: Evita duplicados y usa consulta más eficiente
+ */
   async obtenerPreguntasDeClase(claseId: string): Promise<VersusQuestion[]> {
-    // Consulta: ejercicios vinculados a actividades de esta clase
-    const { data, error } = await this.supabase
-      .from('actividad_ejercicio')
-      .select(`
-        ejercicio:ejercicio_id (
+    try {
+      // Query directa a ejercicios, filtrando por clase a través de actividades
+      const { data: actividadesData, error: actividadesError } = await this.supabase
+        .from('actividad')
+        .select('id')
+        .eq('clase_id', claseId);
+
+      if (actividadesError) {
+        this.logger.error(`Error obteniendo actividades: ${actividadesError.message}`);
+        return [];
+      }
+
+      const actividadIds = actividadesData?.map((a: any) => a.id) || [];
+      
+      if (actividadIds.length === 0) {
+        this.logger.warn(`No hay actividades para clase ${claseId}`);
+        return [];
+      }
+
+      // Obtener ejercicios únicos de estas actividades
+      const { data: relacionesData, error: relacionesError } = await this.supabase
+        .from('actividad_ejercicio')
+        .select('ejercicio_id')
+        .in('actividad_id', actividadIds);
+
+      if (relacionesError) {
+        this.logger.error(`Error obteniendo relaciones: ${relacionesError.message}`);
+        return [];
+      }
+
+      // Extraer IDs únicos de ejercicios
+      const ejercicioIds = [...new Set(relacionesData?.map((r: any) => r.ejercicio_id) || [])];
+
+      if (ejercicioIds.length === 0) {
+        this.logger.warn(`No hay ejercicios vinculados a clase ${claseId}`);
+        return [];
+      }
+
+      // Consulta directa a ejercicios con sus opciones
+      const { data: ejerciciosData, error: ejerciciosError } = await this.supabase
+        .from('ejercicio')
+        .select(`
           id,
           enunciado,
           puntos,
@@ -130,51 +168,49 @@ export class VersusService {
             texto,
             is_correcta
           )
-        ),
-        actividad:actividad_id (
-          clase_id
-        )
-      `)
-      .eq('actividad.clase_id', claseId);
+        `)
+        .in('id', ejercicioIds)
+        .eq('tipo_id', MULTIPLE_CHOICE_TIPO_ID);
 
-    if (error) {
-      this.logger.error(`Error obteniendo preguntas: ${error.message}`);
+      if (ejerciciosError) {
+        this.logger.error(`Error obteniendo ejercicios: ${ejerciciosError.message}`);
+        return [];
+      }
+
+      // Filtrar y mapear preguntas válidas
+      const preguntasValidas: VersusQuestion[] = [];
+
+      for (const ej of (ejerciciosData || [])) {
+        // Filtrar: solo con is_versus = true
+        const esVersus = ej.metadata?.is_versus === true;
+        if (!esVersus) continue;
+
+        // Validar que tenga opciones
+        const opciones = ej.opcion_ejercicio || [];
+        if (opciones.length === 0) continue;
+
+        // Encontrar índice de respuesta correcta
+        const indexCorrecta = opciones.findIndex((o: any) => o.is_correcta === true);
+        if (indexCorrecta === -1) {
+          this.logger.warn(`Ejercicio ${ej.id} sin respuesta correcta marcada`);
+          continue;
+        }
+
+        preguntasValidas.push({
+          id: ej.id,
+          enunciado: ej.enunciado,
+          opciones: opciones.map((o: any) => o.texto),
+          respuestaCorrecta: indexCorrecta,
+          categoria: ej.metadata?.categoria || 'General',
+        });
+      }
+
+      this.logger.log(`📚 Clase ${claseId}: ${preguntasValidas.length} preguntas válidas para Versus (consultadas fresh)`);
+      return preguntasValidas;
+    } catch (error) {
+      this.logger.error(`Error en obtenerPreguntasDeClase: ${error.message}`);
       return [];
     }
-
-    // Filtrar y mapear
-    const preguntasFiltradas: VersusQuestion[] = [];
-    const idsVistos = new Set<string>();
-
-    for (const item of (data || [])) {
-      const ej = item.ejercicio;
-      if (!ej) continue;
-
-      // Evitar duplicados (mismo ejercicio en múltiples actividades)
-      if (idsVistos.has(ej.id)) continue;
-      idsVistos.add(ej.id);
-
-      // Filtrar: solo multiple-choice con is_versus = true
-      const esMultipleChoice = ej.tipo_id === MULTIPLE_CHOICE_TIPO_ID;
-      const esVersus = ej.metadata?.is_versus === true;
-
-      if (!esMultipleChoice || !esVersus) continue;
-
-      // Encontrar índice de respuesta correcta
-      const opciones = ej.opcion_ejercicio || [];
-      const indexCorrecta = opciones.findIndex((o: any) => o.is_correcta === true);
-
-      preguntasFiltradas.push({
-        id: ej.id,
-        enunciado: ej.enunciado,
-        opciones: opciones.map((o: any) => o.texto),
-        respuestaCorrecta: indexCorrecta >= 0 ? indexCorrecta : 0,
-        categoria: ej.metadata?.categoria || 'General',
-      });
-    }
-
-    this.logger.log(`📚 Clase ${claseId}: ${preguntasFiltradas.length} preguntas válidas para Versus`);
-    return preguntasFiltradas;
   }
 
   /**

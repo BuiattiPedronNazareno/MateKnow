@@ -47,22 +47,45 @@ export default function VersusLobbyPage() {
     return () => clearInterval(interval);
   }, [status]);
 
-  const handleBuscarPartida = () => {
+  const handleBuscarPartida = async () => {
     if (!claseId) return;
 
     setStatus('connecting');
     setError('');
 
     try {
+      // 🔒 VALIDACIÓN: Verificar preguntas disponibles ANTES de conectar
+      console.log('🔍 Validando preguntas para clase:', claseId);
+      const validation = await versusService.validateClass(claseId);
+      
+      console.log('📊 Resultado validación:', validation);
+      
+      if (!validation.valido) {
+        console.log('❌ Clase sin preguntas suficientes');
+        setError(validation.mensaje);
+        setStatus('error');
+        
+        // Redirigir a la clase después de 5 segundos
+        setTimeout(() => {
+          router.push(`/clases/${claseId}`);
+        }, 5000);
+        
+        return;
+      }
+
+      console.log('✅ Clase válida, conectando socket...');
+
+      // ✅ Clase válida, proceder con la conexión
       versusService.connect();
 
       versusService.onConnected(() => {
-        console.log('✅ Conectado, buscando partida...');
+        console.log('✅ Socket conectado, buscando partida...');
         setStatus('searching');
         versusService.searchMatch(claseId);
       });
 
       versusService.onSearching(() => {
+        console.log('🔍 Estado: Buscando...');
         setStatus('searching');
       });
 
@@ -73,18 +96,32 @@ export default function VersusLobbyPage() {
       });
 
       versusService.onError((data) => {
-        console.error('❌ Error:', data.message);
+        console.error('❌ Error del servidor:', data.message);
         setError(data.message);
         setStatus('error');
+        
+        // Si el error es sobre preguntas insuficientes, redirigir
+        if (data.message.includes('no hay suficientes') || data.message.includes('Se necesitan mínimo')) {
+          setTimeout(() => {
+            router.push(`/clases/${claseId}`);
+          }, 5000);
+        }
       });
 
       versusService.onSearchCancelled(() => {
+        console.log('❌ Búsqueda cancelada');
         setStatus('idle');
       });
 
     } catch (err: any) {
-      setError(err.message || 'Error al conectar');
+      console.error('❌ Error en validación:', err);
+      setError(err.message || 'Error al validar la clase para Modo Versus');
       setStatus('error');
+      
+      // Redirigir a la clase después de 5 segundos
+      setTimeout(() => {
+        router.push(`/clases/${claseId}`);
+      }, 5000);
     }
   };
 
@@ -132,8 +169,27 @@ export default function VersusLobbyPage() {
 
         {/* Error */}
         {error && (
-          <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
-            {error}
+          <Alert 
+            severity="error" 
+            sx={{ 
+              mb: 3,
+              '& .MuiAlert-message': {
+                width: '100%',
+              }
+            }}
+            onClose={status === 'error' && error.includes('no tiene suficientes') ? undefined : () => setError('')}
+          >
+            <Typography variant="body1" sx={{ fontWeight: 600, mb: 1 }}>
+              Modo Versus no disponible para esta clase.
+            </Typography>
+            <Typography variant="body2">
+              {error}
+            </Typography>
+            {error.includes('no tiene suficientes') && (
+              <Typography variant="caption" sx={{ display: 'block', mt: 1, fontStyle: 'italic' }}>
+                Serás redirigido a la clase en unos segundos.
+              </Typography>
+            )}
           </Alert>
         )}
 
@@ -157,7 +213,7 @@ export default function VersusLobbyPage() {
             }}
           >
             <Typography variant="h5" sx={{ color: 'white', fontWeight: 700 }}>
-              ⚔️ Duelo 1 vs 1 ⚔️
+              Duelo 1 vs 1
             </Typography>
             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.9)', mt: 1 }}>
               Desafiá a un compañero de tu clase en tiempo real
@@ -216,16 +272,13 @@ export default function VersusLobbyPage() {
                   </Typography>
                   <Box sx={{ textAlign: 'left', color: '#5D4037' }}>
                     <Typography variant="body2" sx={{ mb: 1 }}>
-                      ⏱️ <strong>Fase 1 - Selección (20s por turno):</strong> Elegí 5 preguntas para tu rival
+                      <strong>Fase 1 - Selección:</strong> Elegí 5 preguntas para que responda tu rival. Si te colgas y no elegís lo hacemos por vos.
                     </Typography>
                     <Typography variant="body2" sx={{ mb: 1 }}>
-                      📝 <strong>Fase 2 - Respuestas (90s total):</strong> Respondé las 5 preguntas que te eligieron
-                    </Typography>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      ⚡ <strong>Puntuación:</strong> 50 pts base + bonus por velocidad (máx 95 pts)
+                      <strong>Fase 2 - Respuestas:</strong> Respondé las 5 preguntas que te eligieron, entre más rapido mejor.
                     </Typography>
                     <Typography variant="body2">
-                      🏆 <strong>Victoria:</strong> Gana quien sume más puntos
+                      <strong>Victoria:</strong> Gana el que más puntaje tenga.
                     </Typography>
                   </Box>
                 </Paper>

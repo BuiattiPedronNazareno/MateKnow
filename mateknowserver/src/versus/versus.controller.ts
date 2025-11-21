@@ -8,6 +8,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import { VersusService } from './versus.service';
 import { AuthGuard } from '../auth/guards/auth.guard'; // Ajusta la ruta según tu proyecto
@@ -150,6 +151,33 @@ export class VersusController {
       message: 'Has abandonado la partida',
     };
   }
+
+  /**
+   * Validar si una clase tiene suficientes preguntas para Versus
+   * GET /versus/validate-class?claseId=xxx
+   */
+  @Get('validate-class')
+  async validateClass(@Query('claseId') claseId: string) {
+    if (!claseId) {
+      return {
+        valido: false,
+        mensaje: 'claseId es requerido',
+        cantidad: 0,
+      };
+    }
+
+    const validation = await this.versusService.validarPreguntasDisponibles(claseId);
+    
+    return {
+      valido: validation.valido,
+      cantidad: validation.cantidad,
+      mensaje: validation.valido 
+        ? `Clase lista para Versus (${validation.cantidad} preguntas disponibles)`
+        : `Esta clase no tiene suficientes preguntas para el Modo Versus. Se necesitan mínimo 10 preguntas tipo multiple-choice con is_versus=true. Disponibles: ${validation.cantidad}`,
+    };
+  }
+
+
 
   /**
    * POST /versus/select-question

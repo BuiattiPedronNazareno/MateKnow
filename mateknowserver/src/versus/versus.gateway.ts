@@ -112,35 +112,57 @@ export class VersusGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   async handleDisconnect(@ConnectedSocket() client: Socket) {
     try {
       const user = client.data.user as PlayerSession;
-      if (!user) return;
+      if (!user) {
+        this.logger.warn('⚠️ Desconexión de cliente sin usuario asociado');
+        return;
+      }
+
+      this.logger.log(`❌ Desconectado: ${user.nombre} (ID: ${user.userId})`);
 
       // Remover de cola si estaba buscando
       if (user.isSearching && user.currentClaseId) {
         await this.versusService.removeFromSearchQueue(user.userId, user.currentClaseId);
+        this.logger.log(`🔍 ${user.nombre} removido de cola de búsqueda`);
       }
 
       // Notificar al rival si estaba en partida
       if (user.currentLobbyId) {
+        this.logger.log(`🎮 ${user.nombre} estaba en lobby ${user.currentLobbyId}`);
+        
         const gameState = await this.versusService.getGameState(user.currentLobbyId);
         if (gameState) {
           const rivalId = gameState.player1.userId === user.userId
             ? gameState.player2.userId
             : gameState.player1.userId;
+          
+          this.logger.log(`👤 Buscando rival con ID: ${rivalId}`);
+          
           const rivalSession = await this.versusService.getPlayerSession(rivalId);
           if (rivalSession) {
+            this.logger.log(`📤 Enviando opponent-disconnected a ${rivalSession.nombre} (socket: ${rivalSession.socketId})`);
+            
             this.server.to(rivalSession.socketId).emit('opponent-disconnected', {
               message: 'Tu oponente se ha desconectado',
               lobbyId: user.currentLobbyId,
             });
+            
+            this.logger.log(`✅ Evento opponent-disconnected enviado correctamente`);
+          } else {
+            this.logger.warn(`⚠️ No se encontró sesión del rival ${rivalId}`);
           }
+          
           await this.versusService.deleteGameState(user.currentLobbyId);
+          this.logger.log(`🗑️ Lobby ${user.currentLobbyId} eliminada`);
+        } else {
+          this.logger.warn(`⚠️ No se encontró gameState para lobby ${user.currentLobbyId}`);
         }
       }
 
       await this.versusService.deletePlayerSession(user.userId);
-      this.logger.log(`❌ Desconectado: ${user.nombre}`);
+      this.logger.log(`✅ Sesión de ${user.nombre} limpiada completamente`);
     } catch (error) {
-      this.logger.error(`Error en desconexión: ${error.message}`);
+      this.logger.error(`❌ Error en desconexión: ${error.message}`);
+      this.logger.error(error.stack);
     }
   }
 
@@ -429,6 +451,35 @@ export class VersusGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
     // Obtener preguntas de la BD (frescas cada partida)
     const todasPreguntas = await this.versusService.obtenerPreguntasDeClase(claseId);
+    
+    // 🔒 VALIDACIÓN CRÍTICA: Verificar que haya preguntas disponibles
+    if (todasPreguntas.length < 10) {
+      this.logger.error(`❌ No se puede crear lobby: solo hay ${todasPreguntas.length} preguntas en clase ${claseId}`);
+      
+      // Notificar a ambos jugadores del error
+      this.server.to(player1.socketId).emit('error', {
+        message: `No hay suficientes preguntas para iniciar el duelo. Se necesitan mínimo 10, disponibles: ${todasPreguntas.length}`,
+      });
+      
+      this.server.to(player2.socketId).emit('error', {
+        message: `No hay suficientes preguntas para iniciar el duelo. Se necesitan mínimo 10, disponibles: ${todasPreguntas.length}`,
+      });
+      
+      // Limpiar las sesiones
+      player1.isSearching = false;
+      player1.currentClaseId = undefined;
+      player2.isSearching = false;
+      player2.currentClaseId = undefined;
+      await this.versusService.savePlayerSession(player1);
+      await this.versusService.savePlayerSession(player2);
+      
+      // Remover de cola
+      await this.versusService.removeFromSearchQueue(player1.userId, claseId);
+      await this.versusService.removeFromSearchQueue(player2.userId, claseId);
+      
+      return; // NO crear la lobby
+    }
+    
     const preguntasPartida = this.versusService.seleccionarPreguntasAleatorias(todasPreguntas);
 
     this.logger.log(`🎮 Lobby ${lobbyId}: ${preguntasPartida.length} preguntas (clase ${claseId})`);

@@ -97,6 +97,37 @@ class VersusService {
   // ========================================
 
   /**
+ * Valida si una clase tiene preguntas suficientes para Versus
+ */
+  async validateClass(claseId: string): Promise<{ valido: boolean; cantidad: number; mensaje: string }> {
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+    const token = localStorage.getItem('access_token');
+    
+    if (!token) {
+      throw new Error('No hay token de autenticación');
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/versus/validate-class?claseId=${claseId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Error validando clase');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error en validateClass:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Buscar partida en una clase específica
    */
   searchMatch(claseId: string): void {

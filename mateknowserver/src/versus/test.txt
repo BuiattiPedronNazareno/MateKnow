@@ -115,3 +115,10 @@ menu especial cuando alguien abandona.
 
 boton de jugar otra vez, que pasa exactamente
 
+Mas tipos de ejercicios
+
+cuando terminas de responder, pestaña de espera
+
+Cuando el rival abandona, no se vuelve a la pestaña de clase
+
+cuando se crea una lobby, no importa en que clase estes, siempre aparecen las mismas preguntas

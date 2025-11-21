@@ -59,11 +59,14 @@ export default function VersusMatchPage() {
   const [answerStartTime, setAnswerStartTime] = useState<number>(Date.now());
   const [myPoints, setMyPoints] = useState(0);
   const [myCorrect, setMyCorrect] = useState(0);
+  const [hasFinishedAnswering, setHasFinishedAnswering] = useState(false);
+
 
   // Oponente
   const [opponent, setOpponent] = useState<{ nombre: string; apellido: string } | null>(null);
   const [opponentSelections, setOpponentSelections] = useState(0);
   const [opponentFinished, setOpponentFinished] = useState(false);
+  const [disconnectMessage, setDisconnectMessage] = useState(false);
 
   // UI
   const [error, setError] = useState('');
@@ -99,10 +102,24 @@ export default function VersusMatchPage() {
     setLoading(false);
 
     console.log('✅ Match inicializado correctamente');
-
+    
     // Listeners
+
+    versusService.onOpponentDisconnected((data) => {
+      console.log('🚨 opponent-disconnected RECIBIDO:', data);
+      setDisconnectMessage(true);
+      
+      // Limpiar y redirigir después de 3 segundos
+      setTimeout(() => {
+        versusService.clearMatchData();
+        versusService.removeAllListeners();
+        versusService.disconnect();
+        router.push(claseId ? `/clases/${claseId}` : '/dashboard');
+      }, 3000);
+    });
+
     versusService.onQuestionSelected((data) => {
-      console.log('📥 question-selected:', data);
+      console.log('question-selected:', data);
       setSelectedQuestions(prev => new Set([...prev, data.questionId]));
       setMySelections(prev => [...prev, data.questionId]);
       setIsMyTurn(data.yourTurn);
@@ -110,7 +127,7 @@ export default function VersusMatchPage() {
     });
 
     versusService.onOpponentSelected((data) => {
-      console.log('📥 opponent-selected:', data);
+      console.log('opponent-selected:', data);
       setSelectedQuestions(prev => new Set([...prev, data.questionId]));
       setOpponentSelections(data.selectionsCount);
       setIsMyTurn(data.yourTurn);
@@ -118,7 +135,7 @@ export default function VersusMatchPage() {
     });
 
     versusService.onAnsweringPhaseStart((data) => {
-      console.log('📥 answering-phase-start:', data);
+      console.log('answering-phase-start:', data);
       setPhase('answering');
       setAssignedQuestions(data.questions || []);
       setAnswerStartTime(Date.now());
@@ -126,41 +143,40 @@ export default function VersusMatchPage() {
     });
 
     versusService.onAnswerRecorded((data) => {
-      console.log('📥 answer-recorded:', data);
+      console.log('answer-recorded:', data);
       setMyPoints(data.totalPoints);
       if (data.isCorrect) setMyCorrect(prev => prev + 1);
-      if (data.answersCount < 5) {
+      
+      // Marcar como finalizado cuando answersCount es 5
+      if (data.answersCount >= 5) {
+        setHasFinishedAnswering(true);
+      } else {
         setCurrentQuestionIndex(prev => prev + 1);
         setAnswerStartTime(Date.now());
       }
     });
 
     versusService.onOpponentProgress((data) => {
-      console.log('📥 opponent-progress:', data);
+      console.log('opponent-progress:', data);
       setOpponentFinished(data.hasFinished);
     });
 
     versusService.onMatchFinished((data) => {
-      console.log('📥 match-finished:', data);
+      console.log('match-finished:', data);
       setPhase('finished');
       setMatchResult(data);
       setShowResult(true);
     });
 
-    versusService.onOpponentDisconnected(() => {
-      console.log('📥 opponent-disconnected');
-      setError('Tu oponente se desconectó');
-    });
+        versusService.onError((data) => {
+          console.log('error:', data);
+          setError(data.message);
+        });
 
-    versusService.onError((data) => {
-      console.log('📥 error:', data);
-      setError(data.message);
-    });
-
-    return () => {
-      versusService.removeAllListeners();
-    };
-  }, []);
+        return () => {
+          versusService.removeAllListeners();
+        };
+      }, []);
 
   // Timer de selección
   useEffect(() => {
@@ -241,9 +257,16 @@ export default function VersusMatchPage() {
     return matchResult.player2.totalPoints;
   };
 
-  const handlePlayAgain = () => {
+ const handlePlayAgain = () => {
+    // Limpiar todo el estado del socket
+    versusService.removeAllListeners();
     versusService.clearMatchData();
-    router.push(claseId ? `/versus?claseId=${claseId}` : '/dashboard');
+    versusService.disconnect();
+    
+    // Pequeño delay para asegurar que el socket se desconecta completamente
+    setTimeout(() => {
+      router.push(claseId ? `/versus?claseId=${claseId}` : '/versus');
+    }, 100);
   };
 
   const handleExit = () => {
@@ -310,135 +333,296 @@ export default function VersusMatchPage() {
         </Container>
       </Paper>
 
-      {error && (
+      {/* Alert de error normal */}
+      {error && !disconnectMessage && (
         <Container maxWidth="lg" sx={{ mt: 2 }}>
-          <Alert severity="error" onClose={() => setError('')}>{error}</Alert>
+          <Alert severity="error" onClose={() => setError('')}>
+            {error}
+          </Alert>
         </Container>
       )}
 
-      <Container maxWidth="lg" sx={{ mt: 3 }}>
-        {/* FASE SELECCIÓN */}
-        {phase === 'selection' && (
-          <>
-            <Paper sx={{ p: 2, mb: 3, bgcolor: '#FFF8E1', borderRadius: 2, border: '1px solid #FFE0B2' }}>
-              <Typography sx={{ color: '#3E2723', textAlign: 'center' }}>
-                {isMyTurn ? (
-                  <><strong style={{ color: '#2E7D32' }}>¡Tu turno!</strong> Elegí una pregunta para tu rival</>
-                ) : (
-                  <><strong style={{ color: '#F57C00' }}>Turno del oponente...</strong> Esperando selección</>
-                )}
-              </Typography>
-              <LinearProgress
-                variant="determinate"
-                value={(mySelections.length / 5) * 100}
-                sx={{ mt: 2, height: 8, borderRadius: 4, bgcolor: '#FFE0B2', '& .MuiLinearProgress-bar': { bgcolor: '#8B4513' } }}
-              />
-            </Paper>
+      {/* Alert de desconexión */}
+      {disconnectMessage && (
+        <Container maxWidth="lg" sx={{ mt: 2 }}>
+          <Alert 
+            severity="warning"
+            icon={<Cancel />}
+            sx={{
+              '& .MuiAlert-message': {
+                width: '100%',
+              },
+              bgcolor: '#FFF3E0',
+              border: '2px solid #FF9800',
+            }}
+          >
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#E65100', mb: 1 }}>
+              ⚠️ Oponente desconectado
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#5D4037', mb: 2 }}>
+              Tu rival se ha desconectado de la partida. Serás redirigido a la clase...
+            </Typography>
+            <LinearProgress 
+              sx={{ 
+                height: 6, 
+                borderRadius: 3,
+                bgcolor: 'rgba(255, 152, 0, 0.2)',
+                '& .MuiLinearProgress-bar': {
+                  bgcolor: '#FF9800',
+                  animation: 'progress 3s linear',
+                },
+                '@keyframes progress': {
+                  '0%': { transform: 'translateX(-100%)' },
+                  '100%': { transform: 'translateX(0)' },
+                }
+              }} 
+            />
+          </Alert>
+        </Container>
+      )}
 
-            <Grid container spacing={2}>
-              {questions.map((q, idx) => {
-                const isSelected = selectedQuestions.has(q.id);
-                const canSelect = isMyTurn && !isSelected && mySelections.length < 5;
+        <Container maxWidth="lg" sx={{ mt: 3 }}>
+    {/* FASE SELECCIÓN */}
+    {phase === 'selection' && (
+      <>
+        <Paper sx={{ p: 2, mb: 3, bgcolor: '#FFF8E1', borderRadius: 2, border: '1px solid #FFE0B2' }}>
+          <Typography sx={{ color: '#3E2723', textAlign: 'center' }}>
+            {isMyTurn ? (
+              <><strong style={{ color: '#2E7D32' }}>¡Tu turno!</strong> Elegí una pregunta para tu rival</>
+            ) : (
+              <><strong style={{ color: '#F57C00' }}>Turno del oponente...</strong> Esperando selección</>
+            )}
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={(mySelections.length / 5) * 100}
+            sx={{ mt: 2, height: 8, borderRadius: 4, bgcolor: '#FFE0B2', '& .MuiLinearProgress-bar': { bgcolor: '#8B4513' } }}
+          />
+        </Paper>
 
-                return (
-                  <Grid size={{ xs: 12, sm: 6 }} key={idx}>
-                    <Card
-                      onClick={() => canSelect && handleSelectQuestion(q.id)}
+        <Grid container spacing={2}>
+          {questions.map((q, idx) => {
+            const isSelected = selectedQuestions.has(q.id);
+            const canSelect = isMyTurn && !isSelected && mySelections.length < 5;
+
+            return (
+              <Grid size={{ xs: 12, sm: 6 }} key={idx}>
+                <Card
+                  onClick={() => canSelect && handleSelectQuestion(q.id)}
+                  sx={{
+                    cursor: canSelect ? 'pointer' : 'default',
+                    bgcolor: isSelected ? '#E0E0E0' : '#FFF',
+                    border: canSelect ? '2px solid #8B4513' : '1px solid #E0E0E0',
+                    borderRadius: 2,
+                    transition: 'all 0.2s',
+                    opacity: isSelected ? 0.6 : 1,
+                    boxShadow: canSelect ? '0 4px 12px rgba(139,69,19,0.2)' : 1,
+                    '&:hover': canSelect ? { transform: 'translateY(-2px)', boxShadow: '0 6px 16px rgba(139,69,19,0.25)' } : {},
+                  }}
+                >
+                  <CardContent sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Chip label={`#${idx + 1}`} size="small" sx={{ bgcolor: '#FFF8E1', color: '#8B4513', fontWeight: 600 }} />
+                      {isSelected && <Lock sx={{ color: '#999', fontSize: 18 }} />}
+                    </Box>
+                    <Typography
+                      variant="body2"
                       sx={{
-                        cursor: canSelect ? 'pointer' : 'default',
-                        bgcolor: isSelected ? '#E0E0E0' : '#FFF',
-                        border: canSelect ? '2px solid #8B4513' : '1px solid #E0E0E0',
-                        borderRadius: 2,
-                        transition: 'all 0.2s',
-                        opacity: isSelected ? 0.6 : 1,
-                        boxShadow: canSelect ? '0 4px 12px rgba(139,69,19,0.2)' : 1,
-                        '&:hover': canSelect ? { transform: 'translateY(-2px)', boxShadow: '0 6px 16px rgba(139,69,19,0.25)' } : {},
+                        color: isSelected ? '#999' : '#3E2723',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        minHeight: 60,
                       }}
                     >
-                      <CardContent sx={{ p: 2 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Chip label={`#${idx + 1}`} size="small" sx={{ bgcolor: '#FFF8E1', color: '#8B4513', fontWeight: 600 }} />
-                          {isSelected && <Lock sx={{ color: '#999', fontSize: 18 }} />}
-                        </Box>
-                        <Typography
-                          variant="body2"
-                          sx={{
-                            color: isSelected ? '#999' : '#3E2723',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            display: '-webkit-box',
-                            WebkitLineClamp: 3,
-                            WebkitBoxOrient: 'vertical',
-                            minHeight: 60,
-                          }}
-                        >
-                          {q.enunciado}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                );
-              })}
-            </Grid>
-          </>
-        )}
+                      {q.enunciado}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            );
+          })}
+        </Grid>
+      </>
+    )}
 
-        {/* FASE RESPUESTAS */}
-        {phase === 'answering' && assignedQuestions.length > 0 && currentQuestionIndex < assignedQuestions.length && (
-          <Paper sx={{ p: 4, borderRadius: 2, bgcolor: '#FFF' }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-              <Chip label={`Pregunta ${currentQuestionIndex + 1} de 5`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }} />
-              <Typography sx={{ color: '#3E2723', fontWeight: 600 }}>Puntos: <strong style={{ color: '#D2691E' }}>{myPoints}</strong></Typography>
+    {/* FASE RESPUESTAS - Pregunta actual */}
+    {phase === 'answering' && assignedQuestions.length > 0 && currentQuestionIndex < 5 && (
+      <Paper sx={{ p: 4, borderRadius: 2, bgcolor: '#FFF' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+          <Chip label={`Pregunta ${currentQuestionIndex + 1} de 5`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }} />
+          <Typography sx={{ color: '#3E2723', fontWeight: 600 }}>Puntos: <strong style={{ color: '#D2691E' }}>{myPoints}</strong></Typography>
+        </Box>
+
+        <Typography variant="h5" sx={{ color: '#3E2723', mb: 4, fontWeight: 500 }}>
+          {assignedQuestions[currentQuestionIndex].enunciado}
+        </Typography>
+
+        <Grid container spacing={2}>
+          {assignedQuestions[currentQuestionIndex].opciones.map((opcion, idx) => (
+            <Grid size={{ xs: 12, sm: 6 }} key={idx}>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={() => handleAnswer(idx)}
+                disabled={answers[assignedQuestions[currentQuestionIndex].id] !== undefined}
+                sx={{
+                  py: 2,
+                  justifyContent: 'flex-start',
+                  textAlign: 'left',
+                  color: '#3E2723',
+                  borderColor: '#D2691E',
+                  bgcolor: '#FFF8E1',
+                  '&:hover': { bgcolor: '#FFE0B2', borderColor: '#8B4513' },
+                  '&.Mui-disabled': { color: '#999', bgcolor: '#F5F5F5' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar sx={{ width: 28, height: 28, bgcolor: '#8B4513', fontSize: 14 }}>
+                    {String.fromCharCode(65 + idx)}
+                  </Avatar>
+                  {opcion}
+                </Box>
+              </Button>
+            </Grid>
+          ))}
+        </Grid>
+      </Paper>
+    )}
+
+    {/* PANTALLA DE ESPERA - Terminó de responder */}
+    {phase === 'answering' && hasFinishedAnswering && (
+      <Box
+        sx={{
+          position: 'relative',
+          minHeight: '400px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'rgba(0, 0, 0, 0.85)',
+          borderRadius: 3,
+          border: '2px solid #8B4513',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Fondo animado */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'radial-gradient(circle at 50% 50%, rgba(139, 69, 19, 0.2) 0%, transparent 70%)',
+            animation: 'pulse 2s ease-in-out infinite',
+            '@keyframes pulse': {
+              '0%, 100%': { opacity: 0.5 },
+              '50%': { opacity: 1 },
+            },
+          }}
+        />
+
+        {/* Contenido */}
+        <Box sx={{ textAlign: 'center', zIndex: 1, px: 4 }}>
+          <Box
+            sx={{
+              fontSize: '80px',
+              mb: 3,
+              animation: 'bounce 1s ease-in-out infinite',
+              '@keyframes bounce': {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              },
+            }}
+          >
+            🧉
+          </Box>
+
+          <Typography
+            variant="h4"
+            sx={{
+              color: '#FFF',
+              fontWeight: 700,
+              mb: 2,
+              textShadow: '0 2px 10px rgba(0,0,0,0.5)',
+            }}
+          >
+            ¡Qué rápido!
+          </Typography>
+
+          <Typography
+            variant="h6"
+            sx={{
+              color: '#FFE0B2',
+              mb: 1,
+              fontWeight: 500,
+            }}
+          >
+            Ahora a esperar que tu rival cebe el mate 🧉
+          </Typography>
+
+          <Typography
+            variant="body2"
+            sx={{
+              color: 'rgba(255, 255, 255, 0.7)',
+              mb: 4,
+            }}
+          >
+            {opponentFinished ? 'Calculando resultados...' : 'Tu oponente todavía está respondiendo...'}
+          </Typography>
+
+          {/* Estadísticas del jugador */}
+          <Paper
+            sx={{
+              display: 'inline-block',
+              px: 4,
+              py: 2,
+              bgcolor: 'rgba(139, 69, 19, 0.3)',
+              backdropFilter: 'blur(10px)',
+              borderRadius: 2,
+              border: '1px solid rgba(139, 69, 19, 0.5)',
+            }}
+          >
+            <Box sx={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" sx={{ color: '#FFB300', fontWeight: 700 }}>
+                  {myPoints}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#FFE0B2' }}>
+                  Puntos
+                </Typography>
+              </Box>
+              <Box sx={{ width: '1px', height: '40px', bgcolor: 'rgba(255, 255, 255, 0.2)' }} />
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h4" sx={{ color: '#4CAF50', fontWeight: 700 }}>
+                  {myCorrect}/5
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#FFE0B2' }}>
+                  Correctas
+                </Typography>
+              </Box>
             </Box>
-
-            <Typography variant="h5" sx={{ color: '#3E2723', mb: 4, fontWeight: 500 }}>
-              {assignedQuestions[currentQuestionIndex].enunciado}
-            </Typography>
-
-            <Grid container spacing={2}>
-              {assignedQuestions[currentQuestionIndex].opciones.map((opcion, idx) => (
-                <Grid size={{ xs: 12, sm: 6 }} key={idx}>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    onClick={() => handleAnswer(idx)}
-                    disabled={answers[assignedQuestions[currentQuestionIndex].id] !== undefined}
-                    sx={{
-                      py: 2,
-                      justifyContent: 'flex-start',
-                      textAlign: 'left',
-                      color: '#3E2723',
-                      borderColor: '#D2691E',
-                      bgcolor: '#FFF8E1',
-                      '&:hover': { bgcolor: '#FFE0B2', borderColor: '#8B4513' },
-                      '&.Mui-disabled': { color: '#999', bgcolor: '#F5F5F5' },
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Avatar sx={{ width: 28, height: 28, bgcolor: '#8B4513', fontSize: 14 }}>
-                        {String.fromCharCode(65 + idx)}
-                      </Avatar>
-                      {opcion}
-                    </Box>
-                  </Button>
-                </Grid>
-              ))}
-            </Grid>
           </Paper>
-        )}
 
-        {/* Esperando resultados */}
-        {phase === 'answering' && currentQuestionIndex >= 5 && (
-          <Paper sx={{ textAlign: 'center', py: 8, bgcolor: '#FFF' }}>
-            <CheckCircle sx={{ fontSize: 70, color: '#4CAF50', mb: 2 }} />
-            <Typography variant="h5" sx={{ color: '#3E2723', mb: 2, fontWeight: 600 }}>¡Terminaste!</Typography>
-            <Typography sx={{ color: '#5D4037' }}>
-              {opponentFinished ? 'Calculando resultados...' : 'Esperando a tu oponente...'}
-            </Typography>
-            <CircularProgress sx={{ mt: 3, color: '#8B4513' }} />
-          </Paper>
-        )}
-      </Container>
+          {/* Loading indicator */}
+          <Box sx={{ mt: 4 }}>
+            <CircularProgress
+              size={50}
+              thickness={3}
+              sx={{
+                color: '#D2691E',
+                '& .MuiCircularProgress-circle': {
+                  strokeLinecap: 'round',
+                },
+              }}
+            />
+          </Box>
+        </Box>
+      </Box>
+    )}
+  </Container>
 
       {/* Modal Resultados */}
       <Dialog open={showResult} maxWidth="sm" fullWidth PaperProps={{ sx: { bgcolor: '#FFF8E1', borderRadius: 3, border: '2px solid #D2691E' } }}>
