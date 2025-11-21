@@ -15,7 +15,7 @@ import {
 import { PlayerSession } from './interfaces/player-session.interface';
 
 // Constantes
-const MULTIPLE_CHOICE_TIPO_ID = 'bd9aad5a-dd58-4e67-a642-3bde167dc937';
+const TIPO_ABIERTA_ID = 'ae5e4e4c-39b2-4354-9aae-b7d87a156cdc'; // ID del tipo "abierta" a EXCLUIR
 const MIN_PREGUNTAS_VERSUS = 10;
 const MAX_PREGUNTAS_PARTIDA = 16;
 
@@ -69,9 +69,9 @@ export class VersusService {
   // ========================================
 
   /**
-   * Valida si una clase tiene suficientes preguntas para Versus
-   * Condiciones: tipo_id = multiple-choice, is_versus = true, >= 10 preguntas
-   */
+ * Valida si una clase tiene suficientes preguntas para Versus
+ * Condiciones: cualquier tipo EXCEPTO "abierta", is_versus = true, >= 10 preguntas
+ */
   async validarPreguntasDisponibles(claseId: string): Promise<{ valido: boolean; cantidad: number }> {
     const { data, error } = await this.supabase
       .from('actividad_ejercicio')
@@ -92,28 +92,29 @@ export class VersusService {
       return { valido: false, cantidad: 0 };
     }
 
-    // Filtrar por tipo multiple-choice y is_versus = true
+    // Filtrar: cualquier tipo EXCEPTO "abierta" y con is_versus = true
     const preguntasValidas = (data || []).filter((item: any) => {
       const ej = item.ejercicio;
       if (!ej) return false;
       
-      const esMultipleChoice = ej.tipo_id === MULTIPLE_CHOICE_TIPO_ID;
+      const noEsAbierta = ej.tipo_id !== TIPO_ABIERTA_ID;
       const esVersus = ej.metadata?.is_versus === true;
       
-      return esMultipleChoice && esVersus;
+      return noEsAbierta && esVersus;
     });
 
     const cantidad = preguntasValidas.length;
+    this.logger.log(`📊 Validación clase ${claseId}: ${cantidad} preguntas válidas (excluyendo abiertas)`);
+    
     return { 
       valido: cantidad >= MIN_PREGUNTAS_VERSUS, 
       cantidad 
     };
   }
 
-  /**
+ /**
  * Obtiene preguntas de una clase filtradas para Versus
- * Solo multiple-choice con is_versus = true
- * OPTIMIZADO: Evita duplicados y usa consulta más eficiente
+ * Todos los tipos EXCEPTO "abierta" con is_versus = true
  */
   async obtenerPreguntasDeClase(claseId: string): Promise<VersusQuestion[]> {
     try {
@@ -155,6 +156,7 @@ export class VersusService {
       }
 
       // Consulta directa a ejercicios con sus opciones
+      // 🔥 CAMBIO: Excluir tipo "abierta" en lugar de filtrar por multiple-choice
       const { data: ejerciciosData, error: ejerciciosError } = await this.supabase
         .from('ejercicio')
         .select(`
@@ -170,7 +172,7 @@ export class VersusService {
           )
         `)
         .in('id', ejercicioIds)
-        .eq('tipo_id', MULTIPLE_CHOICE_TIPO_ID);
+        .neq('tipo_id', TIPO_ABIERTA_ID); // Excluir preguntas abiertas
 
       if (ejerciciosError) {
         this.logger.error(`Error obteniendo ejercicios: ${ejerciciosError.message}`);
@@ -185,9 +187,12 @@ export class VersusService {
         const esVersus = ej.metadata?.is_versus === true;
         if (!esVersus) continue;
 
-        // Validar que tenga opciones
+        // Validar que tenga opciones (para tipos que las requieren)
         const opciones = ej.opcion_ejercicio || [];
-        if (opciones.length === 0) continue;
+        if (opciones.length === 0) {
+          this.logger.warn(`Ejercicio ${ej.id} sin opciones, omitiendo`);
+          continue;
+        }
 
         // Encontrar índice de respuesta correcta
         const indexCorrecta = opciones.findIndex((o: any) => o.is_correcta === true);
@@ -205,7 +210,7 @@ export class VersusService {
         });
       }
 
-      this.logger.log(`📚 Clase ${claseId}: ${preguntasValidas.length} preguntas válidas para Versus (consultadas fresh)`);
+      this.logger.log(`📚 Clase ${claseId}: ${preguntasValidas.length} preguntas válidas para Versus (todos los tipos excepto abiertas)`);
       return preguntasValidas;
     } catch (error) {
       this.logger.error(`Error en obtenerPreguntasDeClase: ${error.message}`);
