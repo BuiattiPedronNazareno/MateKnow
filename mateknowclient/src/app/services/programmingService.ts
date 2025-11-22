@@ -16,10 +16,13 @@ export const programmingService = {
     })).json(),
 
   getAttempts: async (ejercicioId, usuarioId) => {
-    const url = new URL(`${API}/programming/attempts`);
-    if (ejercicioId) url.searchParams.append("ejercicioId", ejercicioId);
-    if (usuarioId) url.searchParams.append("usuarioId", usuarioId);
-    return (await fetch(url)).json();
+    const params = new URLSearchParams();
+    if (ejercicioId) params.append("ejercicioId", ejercicioId);
+    if (usuarioId) params.append("usuarioId", usuarioId);
+
+    return (
+      await fetch(`${API}/programming/attempts?${params.toString()}`)
+    ).json();
   },
 
   getTests: async (ejercicioId) =>
