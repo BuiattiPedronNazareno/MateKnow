@@ -6,11 +6,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createClient, RedisClientType } from 'redis';
 import { ConfigService } from '@nestjs/config';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { 
-  GameState,  
-  GamePhase, 
+import {
+  GameState,
+  GamePhase,
   PlayerGameState,
-  VersusQuestion 
+  VersusQuestion
 } from './interfaces/game-state.interface';
 import { PlayerSession } from './interfaces/player-session.interface';
 
@@ -96,26 +96,26 @@ export class VersusService {
     const preguntasValidas = (data || []).filter((item: any) => {
       const ej = item.ejercicio;
       if (!ej) return false;
-      
+
       const noEsAbierta = ej.tipo_id !== TIPO_ABIERTA_ID;
       const esVersus = ej.metadata?.is_versus === true;
-      
+
       return noEsAbierta && esVersus;
     });
 
     const cantidad = preguntasValidas.length;
     this.logger.log(`📊 Validación clase ${claseId}: ${cantidad} preguntas válidas (excluyendo abiertas)`);
-    
-    return { 
-      valido: cantidad >= MIN_PREGUNTAS_VERSUS, 
-      cantidad 
+
+    return {
+      valido: cantidad >= MIN_PREGUNTAS_VERSUS,
+      cantidad
     };
   }
 
- /**
- * Obtiene preguntas de una clase filtradas para Versus
- * Todos los tipos EXCEPTO "abierta" con is_versus = true
- */
+  /**
+  * Obtiene preguntas de una clase filtradas para Versus
+  * Todos los tipos EXCEPTO "abierta" con is_versus = true
+  */
   async obtenerPreguntasDeClase(claseId: string): Promise<VersusQuestion[]> {
     try {
       // Query directa a ejercicios, filtrando por clase a través de actividades
@@ -130,7 +130,7 @@ export class VersusService {
       }
 
       const actividadIds = actividadesData?.map((a: any) => a.id) || [];
-      
+
       if (actividadIds.length === 0) {
         this.logger.warn(`No hay actividades para clase ${claseId}`);
         return [];
@@ -294,6 +294,32 @@ export class VersusService {
   async deleteGameState(lobbyId: string): Promise<void> {
     const key = `lobby:${lobbyId}`;
     await this.redisClient.del(key);
+  }
+
+  async saveMatchResult(result: {
+    lobbyId: string;
+    usuarioId: string;
+    oponenteId: string;
+    puntaje: number;
+    esGanador: boolean;
+    esEmpate: boolean;
+    claseId?: string;
+  }) {
+    const { error } = await this.supabase
+      .from('versus_resultado')
+      .insert({
+        lobby_id: result.lobbyId,
+        usuario_id: result.usuarioId,
+        oponente_id: result.oponenteId,
+        puntaje: result.puntaje,
+        es_ganador: result.esGanador,
+        es_empate: result.esEmpate,
+        clase_id: result.claseId,
+      });
+
+    if (error) {
+      this.logger.error(`Error saving match result for user ${result.usuarioId}: ${error.message}`);
+    }
   }
 
   // ========================================

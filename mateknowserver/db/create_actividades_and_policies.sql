@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS actividad_resultado (
   respuestas jsonb DEFAULT '[]'::jsonb,
   puntaje numeric,
   tiempo_segundos integer,
+  racha_maxima integer DEFAULT 0,
   estado text DEFAULT 'in_progress',
   started_at timestamptz DEFAULT now(),
   finished_at timestamptz,

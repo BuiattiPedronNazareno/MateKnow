@@ -28,22 +28,36 @@ import {
   Alert,
   Tooltip
 } from '@mui/material';
-import { 
-  ArrowBack, 
-  Delete, 
-  Add, 
-  Edit, 
-  Visibility, 
-  VisibilityOff, 
-  History, 
-  PlayArrow, 
-  Close, 
-  AccessTime 
+import {
+  ArrowBack,
+  Delete,
+  Add,
+  Edit,
+  Visibility,
+  VisibilityOff,
+  History,
+  PlayArrow,
+  Close,
+  AccessTime,
+  Whatshot,
+  Info
 } from '@mui/icons-material';
 import { actividadService } from '@/app/services/actividadService';
 import OptionsEditor from './components/OptionsEditor';
 import { Radio, RadioGroup } from '@mui/material';
 import { claseService } from '@/app/services/claseService';
+
+const formatTime = (seconds: number) => {
+  if (!seconds && seconds !== 0) return '--:--';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
 
 export default function ActividadesPage() {
   const params = useParams();
@@ -56,7 +70,7 @@ export default function ActividadesPage() {
   const [openDialog, setOpenDialog] = useState(false);
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
-  
+
   const [form, setForm] = useState({
     nombre: '',
     descripcion: '',
@@ -67,7 +81,7 @@ export default function ActividadesPage() {
     ejercicioIds: [] as string[],
     nuevosEjercicios: [] as any[],
   });
-  
+
   const [ejercicios, setEjercicios] = useState<any[]>([]);
   const [isProfesor, setIsProfesor] = useState(false);
   const [editingActividadId, setEditingActividadId] = useState<string | null>(null);
@@ -112,7 +126,7 @@ export default function ActividadesPage() {
       tipo: actividad.tipo || 'practica',
       fechaInicio: actividad.fecha_inicio ? (() => {
         const d = new Date(actividad.fecha_inicio);
-        const tzoffset = d.getTimezoneOffset() * 60000; 
+        const tzoffset = d.getTimezoneOffset() * 60000;
         return new Date(d.getTime() - tzoffset).toISOString().slice(0, 16);
       })() : '',
       fechaFin: actividad.fecha_fin ? (() => {
@@ -143,7 +157,7 @@ export default function ActividadesPage() {
       const payload: any = { ...form };
       if (payload.fechaInicio) payload.fechaInicio = new Date(payload.fechaInicio).toISOString();
       if (payload.fechaFin) payload.fechaFin = new Date(payload.fechaFin).toISOString();
-      
+
       if (payload.nuevosEjercicios && payload.nuevosEjercicios.length > 0) {
         payload.nuevosEjercicios = payload.nuevosEjercicios.map((e: any) => {
           const copy: any = { ...e };
@@ -155,15 +169,15 @@ export default function ActividadesPage() {
         });
 
         for (const e of payload.nuevosEjercicios) {
-            if (e.tipo === 'multiple-choice') {
-              const opciones = e.opciones || [];
-              if (opciones.length < 2) { setError('Multiple-choice requiere al menos 2 opciones'); return; }
-              if (!opciones.some((o: any) => o.is_correcta)) { setError('Multiple-choice requiere al menos una opción correcta'); return; }
-            }
-            if (e.tipo === 'verdadero-falso') {
-              const opts = e.opciones || [];
-              if (opts.length !== 2 || opts.filter((o:any) => o.is_correcta).length !== 1) { setError('Verdadero/Falso requiere 2 opciones y una correcta'); return; }
-            }
+          if (e.tipo === 'multiple-choice') {
+            const opciones = e.opciones || [];
+            if (opciones.length < 2) { setError('Multiple-choice requiere al menos 2 opciones'); return; }
+            if (!opciones.some((o: any) => o.is_correcta)) { setError('Multiple-choice requiere al menos una opción correcta'); return; }
+          }
+          if (e.tipo === 'verdadero-falso') {
+            const opts = e.opciones || [];
+            if (opts.length !== 2 || opts.filter((o: any) => o.is_correcta).length !== 1) { setError('Verdadero/Falso requiere 2 opciones y una correcta'); return; }
+          }
         }
       }
 
@@ -244,42 +258,42 @@ export default function ActividadesPage() {
         <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
           <List>
             {actividades.length === 0 && <Typography sx={{ p: 2 }}>No hay actividades aún.</Typography>}
-            
+
             {actividades.map((a) => (
-              <ListItem 
-                key={a.id} 
-                disablePadding 
+              <ListItem
+                key={a.id}
+                disablePadding
                 sx={{ mb: 1, bgcolor: 'white', borderRadius: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
                 secondaryAction={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {/* ACCIONES ALUMNO */}
                     {!isProfesor && (
-                        <>
-                            <Tooltip title="Ver historial">
-                                <IconButton onClick={() => handleVerHistorial(a.id, a.nombre)} size="small" sx={{ color: '#8B4513' }}>
-                                    <History />
-                                </IconButton>
-                            </Tooltip>
-                            <Button 
-                                variant="contained" 
-                                size="small" 
-                                startIcon={<PlayArrow />}
-                                onClick={() => handleComenzar(a.id)}
-                                sx={{ bgcolor: '#D2691E', color: 'white', '&:hover': { bgcolor: '#BF360C' } }}
-                            >
-                                Realizar
-                            </Button>
-                        </>
+                      <>
+                        <Tooltip title="Ver historial">
+                          <IconButton onClick={() => handleVerHistorial(a.id, a.nombre)} size="small" sx={{ color: '#8B4513' }}>
+                            <History />
+                          </IconButton>
+                        </Tooltip>
+                        <Button
+                          variant="contained"
+                          size="small"
+                          startIcon={<PlayArrow />}
+                          onClick={() => handleComenzar(a.id)}
+                          sx={{ bgcolor: '#D2691E', color: 'white', '&:hover': { bgcolor: '#BF360C' } }}
+                        >
+                          Realizar
+                        </Button>
+                      </>
                     )}
 
                     {/* ACCIONES PROFESOR */}
                     {isProfesor && (
                       <>
-                        <IconButton 
-                            size="small" 
-                            onClick={(e) => { e.stopPropagation(); actividadService.editarActividad(claseId, a.id, { isVisible: !a.is_visible }).then(()=>loadAll()).catch(()=>{}); }}
+                        <IconButton
+                          size="small"
+                          onClick={(e) => { e.stopPropagation(); actividadService.editarActividad(claseId, a.id, { isVisible: !a.is_visible }).then(() => loadAll()).catch(() => { }); }}
                         >
-                            {a.is_visible ? <Visibility /> : <VisibilityOff />}
+                          {a.is_visible ? <Visibility /> : <VisibilityOff />}
                         </IconButton>
                         <IconButton edge="end" onClick={(e) => { e.stopPropagation(); openEdit(a); }} sx={{ mr: 1 }}>
                           <Edit />
@@ -293,21 +307,53 @@ export default function ActividadesPage() {
                 }
               >
                 <ListItemButton onClick={() => isProfesor ? router.push(`/actividades/${claseId}/ver/${a.id}`) : handleComenzar(a.id)} sx={{ px: 2, py: 2 }}>
-                  <ListItemText 
+                  <ListItemText
                     primary={
-                        <Typography variant="subtitle1" fontWeight="bold" color="#3E2723">
-                            {a.nombre}
-                        </Typography>
-                    } 
+                      <Typography variant="subtitle1" fontWeight="bold" color="#3E2723">
+                        {a.nombre}
+                      </Typography>
+                    }
                     secondary={
-                        <Box>
-                            <Typography variant="body2" color="text.secondary">{a.descripcion}</Typography>
-                            <Box sx={{ mt: 1, display: 'flex', gap: 1 }}>
-                                {a.tipo === 'evaluacion' && <Chip size="small" label={`Evaluación`} color="warning" variant="outlined" />}
-                                {!a.is_visible && <Chip size="small" label="Oculta" />}
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">{a.descripcion}</Typography>
+                        <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                          {a.tipo === 'evaluacion' && <Chip size="small" label={`Evaluación`} color="warning" variant="outlined" />}
+                          {!a.is_visible && <Chip size="small" label="Oculta" />}
+
+                          {/* ESTADÍSTICAS DE MEJOR DESEMPEÑO */}
+                          {a.intento && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, ml: 1, bgcolor: 'rgba(0,0,0,0.03)', px: 1, py: 0.5, borderRadius: 1 }}>
+
+                              {/* RACHA */}
+                              <Tooltip title="Mejor racha de respuestas seguidas">
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'help' }}>
+                                  <Whatshot sx={{ fontSize: 18, color: '#D32F2F' }} />
+                                  <Typography variant="body2" fontWeight="bold" color="text.primary">
+                                    {a.intento.bestStreak || 0}
+                                  </Typography>
+                                </Box>
+                              </Tooltip>
+
+                              {/* TIEMPO */}
+                              {a.intento.bestTime && (
+                                <Tooltip title="Mejor tiempo registrado">
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'help' }}>
+                                    <AccessTime sx={{ fontSize: 18, color: '#1976D2' }} />
+                                    <Typography variant="body2" fontWeight="bold" color="text.primary">
+                                      {formatTime(a.intento.bestTime)}
+                                    </Typography>
+                                  </Box>
+                                </Tooltip>
+                              )}
+
+                              <Tooltip title="Estas son tus mejores estadísticas en esta actividad">
+                                <Info sx={{ fontSize: 16, color: 'text.disabled' }} />
+                              </Tooltip>
                             </Box>
+                          )}
                         </Box>
-                    } 
+                      </Box>
+                    }
                   />
                 </ListItemButton>
               </ListItem>
@@ -319,12 +365,12 @@ export default function ActividadesPage() {
         <Dialog open={openDialog} onClose={() => setOpenDialog(false)} fullWidth>
           <DialogTitle>{editingActividadId ? 'Editar Actividad' : 'Crear Actividad'}</DialogTitle>
           <DialogContent sx={{ pt: 2 }}>
-            <TextField fullWidth label="Nombre" value={form.nombre} onChange={(e) => setForm({...form, nombre: e.target.value})} sx={{ mb: 2, mt: 1 }} />
-            <TextField fullWidth label="Descripción" multiline rows={4} value={form.descripcion} onChange={(e) => setForm({...form, descripcion: e.target.value})} sx={{ mb: 2 }} />
+            <TextField fullWidth label="Nombre" value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} sx={{ mb: 2, mt: 1 }} />
+            <TextField fullWidth label="Descripción" multiline rows={4} value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} sx={{ mb: 2 }} />
 
             <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
               <InputLabel id="tipo-label">Tipo</InputLabel>
-              <Select labelId="tipo-label" value={form.tipo} label="Tipo" onChange={(e) => setForm({...form, tipo: e.target.value as any})}>
+              <Select labelId="tipo-label" value={form.tipo} label="Tipo" onChange={(e) => setForm({ ...form, tipo: e.target.value as any })}>
                 <MenuItem value="practica">Práctica</MenuItem>
                 <MenuItem value="evaluacion">Evaluación</MenuItem>
               </Select>
@@ -332,12 +378,12 @@ export default function ActividadesPage() {
 
             {form.tipo === 'evaluacion' && (
               <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                <TextField type="datetime-local" label="Fecha Inicio" InputLabelProps={{ shrink: true }} value={form.fechaInicio} onChange={(e) => setForm({...form, fechaInicio: e.target.value})} />
-                <TextField type="datetime-local" label="Fecha Fin" InputLabelProps={{ shrink: true }} value={form.fechaFin} onChange={(e) => setForm({...form, fechaFin: e.target.value})} />
+                <TextField type="datetime-local" label="Fecha Inicio" InputLabelProps={{ shrink: true }} value={form.fechaInicio} onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })} />
+                <TextField type="datetime-local" label="Fecha Fin" InputLabelProps={{ shrink: true }} value={form.fechaFin} onChange={(e) => setForm({ ...form, fechaFin: e.target.value })} />
               </Box>
             )}
 
-            <FormControlLabel control={<Switch checked={form.isVisible} onChange={(e) => setForm({...form, isVisible: e.target.checked})} />} label="Visible para alumnos" sx={{ mb: 2 }} />
+            <FormControlLabel control={<Switch checked={form.isVisible} onChange={(e) => setForm({ ...form, isVisible: e.target.checked })} />} label="Visible para alumnos" sx={{ mb: 2 }} />
 
             <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
               <InputLabel id="ejercicios-label">Ejercicios (seleccionar)</InputLabel>
@@ -345,7 +391,7 @@ export default function ActividadesPage() {
                 labelId="ejercicios-label"
                 multiple
                 value={form.ejercicioIds}
-                onChange={(e) => setForm({...form, ejercicioIds: e.target.value as string[]})}
+                onChange={(e) => setForm({ ...form, ejercicioIds: e.target.value as string[] })}
                 renderValue={(selected) => (selected as string[]).map(id => {
                   const found = ejercicios.find(x => x.id === id);
                   return found ? (found.metadata?.title || found.titulo || found.enunciado || id) : id;
@@ -362,7 +408,7 @@ export default function ActividadesPage() {
             <Typography sx={{ mb: 1 }}>Crear nuevo ejercicio (opcional)</Typography>
             {!editingActividadId && (
               <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
-                <Button size="small" onClick={() => setForm({...form, nuevosEjercicios: [...form.nuevosEjercicios, { tipo: 'abierta', titulo: '', enunciado: '', puntos: 1, opciones: [], metadata: '' }]})} startIcon={<Add />}>Agregar ejercicio</Button>
+                <Button size="small" onClick={() => setForm({ ...form, nuevosEjercicios: [...form.nuevosEjercicios, { tipo: 'abierta', titulo: '', enunciado: '', puntos: 1, opciones: [], metadata: '' }] })} startIcon={<Add />}>Agregar ejercicio</Button>
               </Box>
             )}
 
@@ -371,18 +417,18 @@ export default function ActividadesPage() {
                 {form.nuevosEjercicios.map((ne, idx) => (
                   <Box key={idx} sx={{ border: '1px dashed #DDD', p: 2, mb: 2 }}>
                     {/* Renderizado básico de formulario de nuevos ejercicios (simplificado para no extender demasiado, usando tu lógica) */}
-                    <TextField fullWidth label={`Título #${idx + 1}`} value={ne.titulo || ''} onChange={(e) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x, i) => i === idx ? { ...x, titulo: e.target.value } : x) })} sx={{ mb: 1 }} />
-                    <TextField fullWidth label="Enunciado" multiline value={ne.enunciado || ''} onChange={(e) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i===idx?{...x, enunciado: e.target.value}:x) })} />
+                    <TextField fullWidth label={`Título #${idx + 1}`} value={ne.titulo || ''} onChange={(e) => setForm({ ...form, nuevosEjercicios: form.nuevosEjercicios.map((x, i) => i === idx ? { ...x, titulo: e.target.value } : x) })} sx={{ mb: 1 }} />
+                    <TextField fullWidth label="Enunciado" multiline value={ne.enunciado || ''} onChange={(e) => setForm({ ...form, nuevosEjercicios: form.nuevosEjercicios.map((x, i) => i === idx ? { ...x, enunciado: e.target.value } : x) })} />
                     <FormControl fullWidth sx={{ mt: 1 }}>
-                        <Select value={ne.tipo || 'abierta'} onChange={(e) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i===idx?{...x, tipo: e.target.value}:x) })}>
-                            <MenuItem value="abierta">Abierta</MenuItem>
-                            <MenuItem value="multiple-choice">Multiple Choice</MenuItem>
-                            <MenuItem value="verdadero-falso">Verdadero/Falso</MenuItem>
-                        </Select>
+                      <Select value={ne.tipo || 'abierta'} onChange={(e) => setForm({ ...form, nuevosEjercicios: form.nuevosEjercicios.map((x, i) => i === idx ? { ...x, tipo: e.target.value } : x) })}>
+                        <MenuItem value="abierta">Abierta</MenuItem>
+                        <MenuItem value="multiple-choice">Multiple Choice</MenuItem>
+                        <MenuItem value="verdadero-falso">Verdadero/Falso</MenuItem>
+                      </Select>
                     </FormControl>
                     {/* Si es MC o VF, mostramos editor de opciones (simplificado aquí) */}
-                    {ne.tipo === 'multiple-choice' && <OptionsEditor opciones={ne.opciones || []} onChange={(opts) => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.map((x,i) => i === idx ? {...x, opciones: opts} : x) })} />}
-                    <Button color="error" onClick={() => setForm({...form, nuevosEjercicios: form.nuevosEjercicios.filter((_, i) => i !== idx)})}>Eliminar</Button>
+                    {ne.tipo === 'multiple-choice' && <OptionsEditor opciones={ne.opciones || []} onChange={(opts) => setForm({ ...form, nuevosEjercicios: form.nuevosEjercicios.map((x, i) => i === idx ? { ...x, opciones: opts } : x) })} />}
+                    <Button color="error" onClick={() => setForm({ ...form, nuevosEjercicios: form.nuevosEjercicios.filter((_, i) => i !== idx) })}>Eliminar</Button>
                   </Box>
                 ))}
               </Box>
@@ -403,10 +449,10 @@ export default function ActividadesPage() {
           <DialogActions>
             <Button onClick={() => { setOpenDeleteDialog(false); setDeleteTargetId(null); }}>Cancelar</Button>
             <Button color="error" variant="contained" onClick={async () => {
-                const idToDelete = deleteTargetId;
-                setOpenDeleteDialog(false);
-                setDeleteTargetId(null);
-                if (idToDelete) await handleEliminar(idToDelete);
+              const idToDelete = deleteTargetId;
+              setOpenDeleteDialog(false);
+              setDeleteTargetId(null);
+              if (idToDelete) await handleEliminar(idToDelete);
             }}>Eliminar</Button>
           </DialogActions>
         </Dialog>
