@@ -45,6 +45,7 @@ import { claseService, Clase } from '../services/claseService';
 import { authService } from '../services/authService';
 
 import MateIcon from '../components/icons/MateIcon';
+import RankingWidget from '../components/RankingWidget';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -131,11 +132,11 @@ export default function DashboardPage() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 8 }}>
       {/* Navbar */}
-      <Box sx={{ 
-        py: 2, 
-        px: { xs: 2, md: 4 }, 
-        display: 'flex', 
-        justifyContent: 'space-between', 
+      <Box sx={{
+        py: 2,
+        px: { xs: 2, md: 4 },
+        display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
         position: 'sticky',
         top: 0,
@@ -146,20 +147,20 @@ export default function DashboardPage() {
         <Stack direction="row" alignItems="center" spacing={1}>
           <MateIcon sx={{ color: 'primary.main', fontSize: 40 }} />
           <Typography variant="h5" sx={{ fontWeight: 800, color: 'text.primary', letterSpacing: '-0.03em' }}>
-              MateKnow
-            </Typography>
-          </Stack>
+            MateKnow
+          </Typography>
+        </Stack>
 
         <Stack direction="row" spacing={1}>
           <IconButton size="small" color="primary">
-             <NotificationsNoneRounded />
+            <NotificationsNoneRounded />
           </IconButton>
-          <Avatar 
-            sx={{ 
-              bgcolor: 'secondary.main', 
-              width: 36, 
-              height: 36, 
-              fontSize: 14, 
+          <Avatar
+            sx={{
+              bgcolor: 'secondary.main',
+              width: 36,
+              height: 36,
+              fontSize: 14,
               fontWeight: 700,
               cursor: 'pointer',
               border: `2px solid ${theme.palette.primary.main}`
@@ -172,13 +173,13 @@ export default function DashboardPage() {
       </Box>
 
       <Container maxWidth="lg" sx={{ mt: 3 }}>
-        
+
         {/* HERO SECTION */}
-        <Box 
-          sx={{ 
-            p: { xs: 3, md: 5 }, 
+        <Box
+          sx={{
+            p: { xs: 3, md: 5 },
             mb: 5,
-            borderRadius: 4, 
+            borderRadius: 4,
             background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
             color: 'white',
             display: 'flex',
@@ -190,14 +191,14 @@ export default function DashboardPage() {
             overflow: 'hidden'
           }}
         >
-          <Box sx={{ 
-            position: 'absolute', 
-            top: -80, 
-            right: -80, 
-            width: 250, 
-            height: 250, 
-            borderRadius: '50%', 
-            bgcolor: 'rgba(255,255,255,0.1)' 
+          <Box sx={{
+            position: 'absolute',
+            top: -80,
+            right: -80,
+            width: 250,
+            height: 250,
+            borderRadius: '50%',
+            bgcolor: 'rgba(255,255,255,0.1)'
           }} />
 
           <Box sx={{ position: 'relative', zIndex: 1 }}>
@@ -207,28 +208,28 @@ export default function DashboardPage() {
             <Typography variant="h6" sx={{ fontWeight: 400, opacity: 0.95, mb: 3 }}>
               ¡Preparate unos mates y empecemos a aprender!
             </Typography>
-            
+
             <Stack direction="row" spacing={2}>
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 onClick={() => router.push('/clases/crear')}
                 startIcon={<AddRounded />}
-                sx={{ 
-                  bgcolor: 'background.paper', 
+                sx={{
+                  bgcolor: 'background.paper',
                   color: 'primary.main',
-                  '&:hover': { bgcolor: '#f0f0f0' } 
+                  '&:hover': { bgcolor: '#f0f0f0' }
                 }}
               >
                 Crear Clase
               </Button>
-              <Button 
-                variant="outlined" 
+              <Button
+                variant="outlined"
                 onClick={() => setOpenJoinDialog(true)}
                 startIcon={<GroupAddRounded />}
-                sx={{ 
-                  color: 'white', 
+                sx={{
+                  color: 'white',
                   borderColor: 'rgba(255,255,255,0.6)',
-                  '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' } 
+                  '&:hover': { borderColor: 'white', bgcolor: 'rgba(255,255,255,0.1)' }
                 }}
               >
                 Unirse con Código
@@ -236,13 +237,13 @@ export default function DashboardPage() {
             </Stack>
           </Box>
 
-          <Stack 
-            direction="row" 
-            spacing={4} 
-            sx={{ 
-              mt: { xs: 4, md: 0 }, 
-              bgcolor: 'rgba(255,255,255,0.15)', 
-              py: 2, 
+          <Stack
+            direction="row"
+            spacing={4}
+            sx={{
+              mt: { xs: 4, md: 0 },
+              bgcolor: 'rgba(255,255,255,0.15)',
+              py: 2,
               px: 4,
               borderRadius: 3,
               backdropFilter: 'blur(5px)'
@@ -265,9 +266,9 @@ export default function DashboardPage() {
         </Box>
 
         {clases.length === 0 ? (
-          <Box sx={{ 
-            textAlign: 'center', 
-            py: 8, 
+          <Box sx={{
+            textAlign: 'center',
+            py: 8,
             borderRadius: 2,
             bgcolor: alpha(theme.palette.background.paper, 0.6),
             border: `2px dashed ${alpha(theme.palette.primary.main, 0.3)}`
@@ -282,10 +283,10 @@ export default function DashboardPage() {
             {clases.map((clase) => (
               <Grid size={{ xs: 12, sm: 6, md: 4 }} key={clase.id}>
                 {/* CORRECCIÓN AQUÍ: Usamos 'position: relative' en la Card */}
-                <Card 
-                  sx={{ 
-                    height: '100%', 
-                    display: 'flex', 
+                <Card
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
                     flexDirection: 'column',
                     position: 'relative', // Necesario para el botón absoluto
                     '&:hover': {
@@ -296,10 +297,10 @@ export default function DashboardPage() {
                 >
                   {/* Botón de Menú - Posicionado ABSOLUTAMENTE fuera del flujo de click principal */}
                   <Box sx={{ position: 'absolute', top: 12, right: 12, zIndex: 10 }}>
-                    <IconButton 
-                      size="small" 
+                    <IconButton
+                      size="small"
                       onClick={(e) => handleMenuOpen(e, clase)}
-                      sx={{ 
+                      sx={{
                         color: 'text.secondary',
                         bgcolor: 'rgba(255,255,255,0.5)',
                         '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' }
@@ -310,22 +311,22 @@ export default function DashboardPage() {
                   </Box>
 
                   {/* Área Clickable Principal - Ya NO contiene el botón de menú */}
-                  <CardActionArea 
-                    onClick={() => handleVerClase(clase.id)} 
-                    sx={{ 
-                      flexGrow: 1, 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'stretch', 
+                  <CardActionArea
+                    onClick={() => handleVerClase(clase.id)}
+                    sx={{
+                      flexGrow: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
                       p: 1,
                       pt: 3 // Un poco de padding extra arriba
                     }}
                   >
                     <CardContent sx={{ p: 2, pt: 1 }}>
                       <Box sx={{ mb: 2 }}>
-                        <Avatar 
+                        <Avatar
                           variant="rounded"
-                          sx={{ 
+                          sx={{
                             bgcolor: clase.isProfesor ? alpha(theme.palette.secondary.main, 0.15) : alpha(theme.palette.primary.main, 0.1),
                             color: clase.isProfesor ? 'secondary.main' : 'primary.main',
                             borderRadius: 2,
@@ -333,19 +334,19 @@ export default function DashboardPage() {
                             height: 48
                           }}
                         >
-                           <SchoolRounded />
+                          <SchoolRounded />
                         </Avatar>
                       </Box>
-                      
+
                       <Typography variant="h6" sx={{ mb: 0.5, lineHeight: 1.2, pr: 4 }}>
                         {clase.nombre}
                       </Typography>
-                      
-                      <Typography 
-                        variant="body2" 
+
+                      <Typography
+                        variant="body2"
                         color="text.secondary"
-                        sx={{ 
-                          mb: 2, 
+                        sx={{
+                          mb: 2,
                           display: '-webkit-box',
                           WebkitLineClamp: 2,
                           WebkitBoxOrient: 'vertical',
@@ -358,13 +359,13 @@ export default function DashboardPage() {
 
                       <Stack direction="row" spacing={1}>
                         {clase.isProfesor && (
-                          <Chip 
-                            label="Profesor" 
-                            size="small" 
-                            sx={{ 
-                              bgcolor: alpha(theme.palette.secondary.main, 0.1), 
-                              color: 'secondary.main', 
-                            }} 
+                          <Chip
+                            label="Profesor"
+                            size="small"
+                            sx={{
+                              bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                              color: 'secondary.main',
+                            }}
                           />
                         )}
                         <Chip
@@ -381,10 +382,13 @@ export default function DashboardPage() {
           </Grid>
         )}
 
+        {/* Ranking Widget */}
+        <RankingWidget />
+
         {/* Menú y Diálogos sin cambios... */}
-        <Menu 
-          anchorEl={anchorEl} 
-          open={Boolean(anchorEl)} 
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
           onClose={handleMenuClose}
         >
           <MenuItem onClick={() => selectedClase && handleVerClase(selectedClase.id)}>
@@ -401,10 +405,10 @@ export default function DashboardPage() {
           )}
         </Menu>
 
-        <Dialog 
-          open={openJoinDialog} 
-          onClose={() => setOpenJoinDialog(false)} 
-          maxWidth="xs" 
+        <Dialog
+          open={openJoinDialog}
+          onClose={() => setOpenJoinDialog(false)}
+          maxWidth="xs"
           fullWidth
         >
           <DialogTitle sx={{ textAlign: 'center', pt: 3 }}>
@@ -420,9 +424,9 @@ export default function DashboardPage() {
               value={codigoClase}
               onChange={(e) => setCodigoClase(e.target.value.toUpperCase())}
               placeholder="ABC123XY"
-              inputProps={{ 
-                maxLength: 8, 
-                style: { textAlign: 'center', fontSize: '1.5rem', letterSpacing: 6, fontWeight: 'bold', color: theme.palette.primary.main } 
+              inputProps={{
+                maxLength: 8,
+                style: { textAlign: 'center', fontSize: '1.5rem', letterSpacing: 6, fontWeight: 'bold', color: theme.palette.primary.main }
               }}
               disabled={joinLoading}
             />

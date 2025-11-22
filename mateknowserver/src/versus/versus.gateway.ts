@@ -14,6 +14,7 @@ import { VersusService } from './versus.service';
 import { PlayerSession } from './interfaces/player-session.interface';
 import { createClient } from '@supabase/supabase-js';
 import { ConfigService } from '@nestjs/config';
+import { RankingGateway } from '../actividad/ranking.gateway';
 
 @WebSocketGateway({
   cors: {
@@ -33,6 +34,7 @@ export class VersusGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   constructor(
     private readonly versusService: VersusService,
     private readonly configService: ConfigService,
+    private readonly rankingGateway: RankingGateway,
   ) {
     const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_ANON_KEY');
@@ -741,6 +743,31 @@ export class VersusGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
     await this.versusService.saveGameState(gameState);
 
+    // Guardar resultados en BD
+    try {
+      await this.versusService.saveMatchResult({
+        lobbyId: gameState.lobbyId,
+        usuarioId: gameState.player1.userId,
+        oponenteId: gameState.player2.userId,
+        puntaje: p1Points,
+        esGanador: winnerId === gameState.player1.userId,
+        esEmpate: isDraw,
+        claseId: gameState.claseId,
+      });
+
+      await this.versusService.saveMatchResult({
+        lobbyId: gameState.lobbyId,
+        usuarioId: gameState.player2.userId,
+        oponenteId: gameState.player1.userId,
+        puntaje: p2Points,
+        esGanador: winnerId === gameState.player2.userId,
+        esEmpate: isDraw,
+        claseId: gameState.claseId,
+      });
+    } catch (error) {
+      this.logger.error(`Error guardando resultados de versus: ${error.message}`);
+    }
+
     const resultData = {
       lobbyId: gameState.lobbyId,
       phase: 'finished',
@@ -787,6 +814,34 @@ export class VersusGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     }
 
     this.logger.log(`🏆 Ganador: ${isDraw ? 'EMPATE' : (winnerId === gameState.player1.userId ? gameState.player1.nombre : gameState.player2.nombre)}`);
+
+    // Emitir actualización de ranking
+    if (gameState.claseId) {
+      this.rankingGateway.emitRankingUpdate({
+        type: 'versus',
+        claseId: gameState.claseId,
+        userId: gameState.player1.userId,
+        puntaje: p1Points,
+      });
+      this.rankingGateway.emitRankingUpdate({
+        type: 'versus',
+        claseId: gameState.claseId,
+        userId: gameState.player2.userId,
+        puntaje: p2Points,
+      });
+    } else {
+       // Global ranking update (no claseId)
+       this.rankingGateway.emitRankingUpdate({
+        type: 'versus',
+        userId: gameState.player1.userId,
+        puntaje: p1Points,
+      });
+      this.rankingGateway.emitRankingUpdate({
+        type: 'versus',
+        userId: gameState.player2.userId,
+        puntaje: p2Points,
+      });
+    }
 
     setTimeout(async () => {
       await this.versusService.deleteGameState(gameState.lobbyId);
