@@ -180,27 +180,47 @@ export default function DetalleEjercicioPage() {
             })}
           </Typography>
 
-          <Typography variant="h6" sx={{ fontWeight: 600, mt: 3, mb: 2, color: '#3E2723' }}>
-            Opciones de Respuesta:
-          </Typography>
-          <List>
-            {ejercicio.opciones.map((opcion, index) => (
-              <ListItem key={opcion.id || index} sx={{ pl: 0, py: 1 }}>
-                <ListItemText
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {opcion.isCorrecta ? (
-                        <CheckCircleIcon color="success" fontSize="small" />
-                      ) : (
-                        <RadioButtonUncheckedIcon color="disabled" fontSize="small" />
-                      )}
-                      <span>{opcion.texto}</span>
-                    </Box>
-                  }
-                />
-              </ListItem>
-            ))}
-          </List>
+          {ejercicio.tipo.key === 'programming' ? (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#3E2723' }}>
+                Ejercicio de Programación
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Este es un ejercicio de programación con tests automatizados.
+              </Typography>
+              <Button
+                variant="outlined"
+                sx={{ mt: 2 }}
+                onClick={() => router.push(`/ejercicios/programming/${ejercicio.id}/intentos`)}
+              >
+                Ver intentos de alumnos
+              </Button>
+            </Box>
+          ) : (
+            <>
+              <Typography variant="h6" sx={{ fontWeight: 600, mt: 3, mb: 2, color: '#3E2723' }}>
+                Opciones de Respuesta:
+              </Typography>
+              <List>
+                {ejercicio.opciones.map((opcion, index) => (
+                  <ListItem key={opcion.id || index} sx={{ pl: 0, py: 1 }}>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {opcion.isCorrecta ? (
+                            <CheckCircleIcon color="success" fontSize="small" />
+                          ) : (
+                            <RadioButtonUncheckedIcon color="disabled" fontSize="small" />
+                          )}
+                          <span>{opcion.texto}</span>
+                        </Box>
+                      }
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </>
+          )}
 
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 4, gap: 2 }}>
             <Button

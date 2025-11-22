@@ -151,6 +151,9 @@ export default function EjerciciosPage() {
                       {ejercicio.isVersus && (
                         <Chip label="Modo Versus" color="secondary" size="small" />
                       )}
+                      {ejercicio.tipo.key === 'programming' && (
+                        <Chip label="Programación" color="info" size="small" />
+                      )}
                     </Box>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                       {ejercicio.enunciado}

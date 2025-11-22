@@ -1,21 +1,25 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards, Request } from '@nestjs/common';
 import { ProgrammingService } from './programming.service';
 import { CreateAttemptDto } from './dto/create-attempt.dto';
 import { CreateTestCaseDto } from './dto/create-testcase.dto';
+import { AuthGuard } from '../auth/guards/auth.guard';
 
 @Controller('programming')
+@UseGuards(AuthGuard)
 export class ProgrammingController {
   constructor(private readonly svc: ProgrammingService) {}
 
   @Post('execute')
-  async execute(@Body() dto: CreateAttemptDto) {
+  async execute(@Body() dto: CreateAttemptDto, @Request() req) {
     const { lenguaje, version, codigo, ejercicioId } = dto;
     const tests = await this.svc.getTestCasesByEjercicio(ejercicioId);
     return await this.svc.runTests(lenguaje, version ?? null, codigo, tests);
   }
 
   @Post('attempts')
-  async createAttempt(@Body() dto: CreateAttemptDto) {
+  async createAttempt(@Body() dto: CreateAttemptDto, @Request() req) {
+    const usuarioId = req.user.id;
+    
     const tests = await this.svc.getTestCasesByEjercicio(dto.ejercicioId);
     const { runResult, tests: detail, score } = await this.svc.runTests(
       dto.lenguaje,
@@ -30,7 +34,7 @@ export class ProgrammingController {
 
     const saved = await this.svc.saveAttempt({
       ejercicioId: dto.ejercicioId,
-      usuarioId: dto.usuarioId,
+      usuarioId,
       codigo: dto.codigo,
       lenguaje: dto.lenguaje,
       runResult,
@@ -42,8 +46,13 @@ export class ProgrammingController {
   }
 
   @Get('attempts')
-  async getAttempts(@Query('ejercicioId') ejercicioId?: string, @Query('usuarioId') usuarioId?: string) {
-    return await this.svc.getAttempts(ejercicioId, usuarioId);
+  async getAttempts(
+    @Query('ejercicioId') ejercicioId?: string,
+    @Query('usuarioId') usuarioId?: string,
+    @Request() req?,
+  ) {
+    const finalUserId = usuarioId || req.user.id;
+    return await this.svc.getAttempts(ejercicioId, finalUserId);
   }
 
   @Post('exercises/:ejercicioId/tests')

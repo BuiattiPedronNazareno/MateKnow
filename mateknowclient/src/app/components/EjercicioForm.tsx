@@ -140,7 +140,7 @@ export default function EjercicioForm({
     setOpciones(nuevas);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const isUuid = (s?: string) =>
@@ -157,22 +157,7 @@ export default function EjercicioForm({
       return;
     }
 
-    if (tipoSeleccionado?.key !== "programming") {
-      const correctas = opciones.filter((o) => o.isCorrecta).length;
-
-      if (correctas === 0) {
-        setFetchError("Debe haber al menos una opción correcta");
-        return;
-      }
-
-      if (tipoSeleccionado?.key === "true_false" && correctas !== 1) {
-        setFetchError("En Verdadero/Falso debe haber exactamente una opción correcta");
-        return;
-      }
-    }
-
     if (tipoSeleccionado?.key === "programming") {
-
       if (!metadata?.lenguaje?.trim()) {
         setFetchError("El lenguaje es obligatorio");
         return;
@@ -183,14 +168,37 @@ export default function EjercicioForm({
         return;
       }
       
-      return onSubmit({
-        tipoId,
-        enunciado: enunciado.trim(),
-        puntos: parseInt(puntos) || 1,
-        isVersus: false,
-        metadata,
-        tests,
-      });
+      try {
+        await ejercicioService.crearEjercicioProgramacion({
+          tipoId,
+          enunciado: enunciado.trim(),
+          puntos: parseInt(puntos) || 1,
+          metadata,
+          tests,
+        });
+        
+        if (onCancel) {
+          onCancel(); 
+        } else {
+          window.location.href = '/ejercicios'; 
+        }
+        return; 
+      } catch (err: any) {
+        setFetchError(err.message || 'Error al crear ejercicio de programación');
+        return;
+      }
+    }
+
+    const correctas = opciones.filter((o) => o.isCorrecta).length;
+
+    if (correctas === 0) {
+      setFetchError("Debe haber al menos una opción correcta");
+      return;
+    }
+
+    if (tipoSeleccionado?.key === "true_false" && correctas !== 1) {
+      setFetchError("En Verdadero/Falso debe haber exactamente una opción correcta");
+      return;
     }
 
     onSubmit({
@@ -263,8 +271,6 @@ export default function EjercicioForm({
 
       {tipoSeleccionado?.key === "programming" && (
         <ProgramacionEditor
-          enunciado={enunciado}
-          setEnunciado={setEnunciado}
           metadata={metadata}
           setMetadata={setMetadata}
           tests={tests}

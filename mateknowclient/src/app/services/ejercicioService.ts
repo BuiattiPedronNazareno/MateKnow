@@ -115,4 +115,30 @@ export const ejercicioService = {
     const response = await api.delete(`/${id}`, { params: { deleteActividades } });
     return response.data;
   },
+
+  async crearEjercicioProgramacion(data: {
+    tipoId: string;
+    enunciado: string;
+    puntos: number;
+    metadata: any;
+    tests: any[];
+  }): Promise<{ ok: boolean; ejercicio: any }> {
+    const token = localStorage.getItem('access_token');
+    console.log("DATA A ENVIAR:", data);
+    const response = await fetch(`${API_URL}/ejercicio/programming/create`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Error al crear ejercicio de programación');
+    }
+
+    return response.json();
+  },
 };

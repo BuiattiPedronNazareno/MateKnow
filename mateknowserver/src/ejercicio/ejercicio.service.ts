@@ -149,19 +149,34 @@ export class EjercicioService {
       }
 
       return {
-        ejercicios: (ejercicios || []).map((ej) => ({
-          id: ej.id as string,
-          enunciado: ej.enunciado as string,
-          puntos: ej.puntos as number,
-          isVersus: (ej.metadata as { is_versus?: boolean })?.is_versus || false,
-          tipo: ej.tipo_ejercicio,
-          opciones: ((ej.opciones as unknown[]) || []).map((op: any) => ({
-            id: op.id as string,
-            texto: op.texto as string,
-            isCorrecta: op.is_correcta as boolean,
-          })),
-          creadoAt: ej.creado_at as string,
-        })),
+        ejercicios: (ejercicios || []).map((ej) => {
+          const tipo = ej.tipo_ejercicio as any;
+          if (tipo?.key === 'programming') {
+            return {
+              id: ej.id as string,
+              enunciado: ej.enunciado as string,
+              puntos: ej.puntos as number,
+              isVersus: false,
+              tipo: tipo,
+              opciones: [],
+              creadoAt: ej.creado_at as string,
+            };
+          }
+
+          return {
+            id: ej.id as string,
+            enunciado: ej.enunciado as string,
+            puntos: ej.puntos as number,
+            isVersus: (ej.metadata as { is_versus?: boolean })?.is_versus || false,
+            tipo: tipo,
+            opciones: ((ej.opciones as unknown[]) || []).map((op: any) => ({
+              id: op.id as string,
+              texto: op.texto as string,
+              isCorrecta: op.is_correcta as boolean,
+            })),
+            creadoAt: ej.creado_at as string,
+          };
+        }),
       };
     } catch {
       throw new InternalServerErrorException('Error al obtener ejercicios');

@@ -1,15 +1,19 @@
 import { Type } from 'class-transformer';
-import { 
-  IsNotEmpty,
-  IsString,
+import {
   IsUUID,
+  IsString,
+  IsNotEmpty,
   IsOptional,
   IsNumber,
   IsArray,
   ValidateNested,
 } from 'class-validator';
 
-export class ProgrammingTestCaseInput {
+export class UpdateProgrammingTestCaseDto {
+  @IsUUID()
+  @IsOptional()
+  id?: string;
+
   @IsOptional()
   @IsString()
   stdin?: string | null;
@@ -23,18 +27,17 @@ export class ProgrammingTestCaseInput {
   weight?: number;
 }
 
-export class CreateProgrammingExerciseDto {
-
+export class UpdateProgrammingExerciseDto {
   @IsUUID()
   @IsNotEmpty()
-  tipoId!: string;
+  id!: string;
 
   @IsString()
   @IsNotEmpty()
   enunciado!: string;
 
-  @IsNumber()
   @IsOptional()
+  @IsNumber()
   puntos?: number;
 
   @IsOptional()
@@ -42,6 +45,6 @@ export class CreateProgrammingExerciseDto {
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ProgrammingTestCaseInput)
-  tests!: ProgrammingTestCaseInput[];
+  @Type(() => UpdateProgrammingTestCaseDto)
+  tests!: UpdateProgrammingTestCaseDto[];
 }

@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 export class ProgrammingService {
   private supabase = createClient(
     process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
   private pistonUrl = (process.env.PISTON_URL || 'https://emkc.org/api/v2').replace(/\/$/, '');
@@ -48,7 +48,7 @@ export class ProgrammingService {
   }
 
   async runTests(language: string, version: string | null, code: string, testCases: any[]) {
-    let runResult = null;
+    let runResult: any = null;
     try {
       runResult = await this.runOnPiston(language, version, code, '');
     } catch (err) {
@@ -149,4 +149,43 @@ export class ProgrammingService {
     if (error) throw new InternalServerErrorException(error.message);
     return data ?? [];
   }
+
+  async updateProgrammingExercise(id: string, dto: any) {
+    const { error: err1 } = await this.supabase
+        .from('ejercicio')
+        .update({
+        enunciado: dto.enunciado,
+        puntos: dto.puntos ?? 1,
+        metadata: dto.metadata ?? {},
+        })
+        .eq('id', id);
+
+    if (err1) throw new InternalServerErrorException(err1.message);
+
+    await this.deleteTestCases(id);
+
+    for (const t of dto.tests) {
+        await this.createTestCase({
+        ejercicio_id: id,
+        stdin: t.stdin,
+        expected: t.expected,
+        weight: t.weight ?? 1,
+        timeout_seconds: 3,
+        public: false,
+        });
+    }
+
+    return { ok: true };
+    }
+
+    async deleteProgrammingExercise(id: string) {
+    await this.deleteTestCases(id);
+
+    const { error } = await this.supabase
+        .from('ejercicio')
+        .delete()
+        .eq('id', id);
+
+    if (error) throw new InternalServerErrorException(error.message);
+    }
 }

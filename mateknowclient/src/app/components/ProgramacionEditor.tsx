@@ -1,36 +1,52 @@
 "use client";
 
 import { useState } from "react";
-import { Box, TextField, Button, Typography } from "@mui/material";
+import { Box, TextField, Button, Typography, FormControl, InputLabel, Select, MenuItem } from "@mui/material";
+
+const LENGUAJES_DISPONIBLES = [
+  { value: 'c', label: 'C' },
+  { value: 'java', label: 'Java' },
+  { value: 'php', label: 'PHP' },
+  { value: 'csharp', label: 'C#' },
+  { value: 'cpp', label: 'C++' },
+  { value: 'rust', label: 'Rust' },
+  { value: 'go', label: 'Go' },
+  { value: 'typescript', label: 'TypeScript' },
+  { value: 'javascript', label: 'JavaScript' },
+  { value: 'python', label: 'Python' },
+  { value: 'ruby', label: 'Ruby' },
+];
 
 export default function ProgramacionEditor({
-  enunciado,
-  setEnunciado,
   metadata,
   setMetadata,
   tests,
   setTests
+}: {
+  metadata: any;
+  setMetadata: (m: any) => void;
+  tests: any[];
+  setTests: (t: any[]) => void;
 }) {
-
   const addTest = () => setTests([...tests, { stdin: "", expected: "", weight: 1 }]);
 
   return (
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-      <TextField
-        label="Enunciado"
-        multiline
-        rows={3}
-        value={enunciado}
-        onChange={(e) => setEnunciado(e.target.value)}
-      />
-
-      <TextField
-        label="Lenguaje (python, js, etc)"
-        value={metadata.lenguaje ?? ""}
-        onChange={(e) =>
-          setMetadata({ ...metadata, lenguaje: e.target.value })
-        }
-      />
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 3, pb: "2em" }}>
+      <FormControl fullWidth required>
+        <InputLabel id="lenguaje-select-label">Lenguaje de Programación</InputLabel>
+        <Select
+          labelId="lenguaje-select-label"
+          value={metadata.lenguaje ?? ""}
+          label="Lenguaje de Programación"
+          onChange={(e) => setMetadata({ ...metadata, lenguaje: e.target.value })}
+        >
+          {LENGUAJES_DISPONIBLES.map((lang) => (
+            <MenuItem key={lang.value} value={lang.value}>
+              {lang.label}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
 
       <TextField
         label="Código base / boilerplate"
@@ -40,6 +56,7 @@ export default function ProgramacionEditor({
         }
         multiline
         rows={6}
+        placeholder="# Escribe el código inicial que verán los alumnos"
       />
 
       <Typography variant="h6">Tests automáticos</Typography>
@@ -55,6 +72,8 @@ export default function ProgramacionEditor({
               arr[i].stdin = e.target.value;
               setTests(arr);
             }}
+            sx={{ mb: 2 }}
+            placeholder="Datos de entrada para el programa"
           />
           <TextField
             label="Salida esperada"
@@ -65,6 +84,8 @@ export default function ProgramacionEditor({
               arr[i].expected = e.target.value;
               setTests(arr);
             }}
+            sx={{ mb: 2 }}
+            placeholder="Salida que debe producir el programa"
           />
           <TextField
             label="Peso"
@@ -75,11 +96,14 @@ export default function ProgramacionEditor({
               arr[i].weight = Number(e.target.value);
               setTests(arr);
             }}
+            inputProps={{ min: 1 }}
           />
         </Box>
       ))}
 
-      <Button onClick={addTest}>+ Agregar test</Button>
+      <Button onClick={addTest} variant="outlined">
+        + Agregar test
+      </Button>
     </Box>
   );
 }
