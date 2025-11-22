@@ -10,15 +10,16 @@ import { CreateAnuncioDto } from './dto/create-anuncio.dto';
 import { UpdateAnuncioDto } from './dto/update-anuncio.dto';
 import { CreateComentarioDto } from './dto/create-comentario.dto';
 import { UpdateComentarioDto } from './dto/update-comentario.dto';
+import { NotificacionService } from '../notificacion/notificacion.service';
 
 @Injectable()
 export class AnuncioService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private notificacionService: NotificacionService 
+  ) {}
 
-  /**
-   * CA1: Crear un nuevo anuncio
-   */
-  async createAnuncio(
+async createAnuncio(
     claseId: string,
     createAnuncioDto: CreateAnuncioDto,
     userId: string,
@@ -30,7 +31,7 @@ export class AnuncioService {
       // CA6: Verificar que el usuario es profesor de la clase
       await this.verificarEsProfesor(claseId, userId, accessToken);
 
-      // CA2: Crear anuncio con fecha de publicación automática
+      // CA2: Crear anuncio
       const { data: anuncio, error } = await supabase
         .from('anuncio')
         .insert({
@@ -41,17 +42,36 @@ export class AnuncioService {
         })
         .select(`
           *,
-          autor:usuario_id ( 
-            id,
-            nombre,
-            apellido,
-            email
-          )
+          autor:usuario_id ( id, nombre, apellido, email )
         `)
         .single();
 
       if (error) {
         throw new BadRequestException('Error al crear anuncio: ' + error.message);
+      }
+
+      try {
+        const link = `/clases/${claseId}/anuncio/${anuncio.id}`;
+        
+        // Llamada al servicio de notificaciones
+        await this.notificacionService.notificarClase(
+          claseId,
+          `Nuevo anuncio: ${createAnuncioDto.titulo}`,
+          'El profesor ha publicado novedades en la clase.',
+          link
+        );
+
+        await this.notificacionService.notificarClase(
+          claseId,
+          `Nuevo anuncio: ${createAnuncioDto.titulo}`,
+          'El profesor ha publicado novedades en la clase.',
+          link,
+          userId 
+        );
+
+        console.log('Notificación enviada al sistema');
+      } catch (notifError) {
+        console.error(' Error enviando notificación:', notifError);
       }
 
       return {
