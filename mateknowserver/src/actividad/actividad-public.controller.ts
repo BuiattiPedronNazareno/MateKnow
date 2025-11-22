@@ -2,12 +2,26 @@ import { Controller, Get, Post, Put, Param, Body, Request, HttpCode, HttpStatus,
 import { ActividadService } from './actividad.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { RespuestaParcialDto } from './dto/respuesta-parcial.dto';
-import { FinalizarIntentoDto } from './dto/finalizar-intento.dto'; 
+import { FinalizarIntentoDto } from './dto/finalizar-intento.dto';
 
 @Controller('actividades')
 @UseGuards(AuthGuard)
 export class ActividadPublicController {
-  constructor(private readonly actividadService: ActividadService) {}
+  constructor(private readonly actividadService: ActividadService) { }
+
+  // GET /actividades/ranking/global
+  @Get('ranking/global')
+  @HttpCode(HttpStatus.OK)
+  async getGlobalRanking(@Request() req) {
+    return this.actividadService.getGlobalRanking(req.token);
+  }
+
+  // GET /actividades/ranking/global-versus
+  @Get('ranking/global-versus')
+  @HttpCode(HttpStatus.OK)
+  async getGlobalVersusRanking(@Request() req) {
+    return this.actividadService.getGlobalVersusRanking(req.token);
+  }
 
   // GET /actividades/:id
   @Get(':id')
@@ -39,10 +53,10 @@ export class ActividadPublicController {
   @HttpCode(HttpStatus.OK)
   async finalizarIntento(
     @Param('id') resultadoId: string,
-    @Body() dto: FinalizarIntentoDto, 
+    @Body() dto: FinalizarIntentoDto,
     @Request() req
   ) {
-    return this.actividadService.finalizarIntento(resultadoId, req.user.id, req.token, dto); 
+    return this.actividadService.finalizarIntento(resultadoId, req.user.id, req.token, dto);
   }
 
   // GET /actividades/:id/revision

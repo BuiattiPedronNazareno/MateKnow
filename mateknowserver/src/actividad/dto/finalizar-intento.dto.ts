@@ -1,7 +1,11 @@
-import { IsOptional, IsArray } from 'class-validator';
+import { IsOptional, IsArray, IsNumber } from 'class-validator';
 
 export class FinalizarIntentoDto {
   @IsOptional()
   @IsArray()
-  respuestas?: any[]; 
+  respuestas?: any[];
+
+  @IsOptional()
+  @IsNumber()
+  tiempoSegundos?: number;
 }

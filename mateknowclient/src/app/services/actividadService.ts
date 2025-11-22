@@ -41,6 +41,7 @@ export interface Intento {
   estado: 'in_progress' | 'finished';
   respuestas: any[];
   puntaje?: number;
+  racha_maxima?: number;
   started_at: string;
 }
 
@@ -98,7 +99,7 @@ export const actividadService = {
 
   // 4. Finalizar Intento
   // URL: /clases/:claseId/actividades/intento/:intentoId/finalizar
-  async finalizarIntento(claseId: string, intentoId: string, payload?: any): Promise<{ message: string; puntaje: number }> {
+  async finalizarIntento(claseId: string, intentoId: string, payload?: any): Promise<{ message: string; puntaje: number; resultado: any }> {
     const response = await api.post(`/clases/${claseId}/actividades/intento/${intentoId}/finalizar`, payload);
     return response.data;
   },
@@ -128,6 +129,25 @@ export const actividadService = {
     const res = await api.post(`/clases/${claseId}/actividades/${actividadId}/corregir`, {
       intentoId, ejercicioId, puntaje
     });
+    return res.data;
+  },
+
+  // --- RANKING ---
+
+  async getGlobalRanking() {
+    const res = await api.get('/actividades/ranking/global');
+    return res.data;
+  },
+  async getGlobalVersusRanking() {
+    const res = await api.get('/actividades/ranking/global-versus');
+    return res.data;
+  },
+  async getClaseRanking(claseId: string) {
+    const res = await api.get(`/clases/${claseId}/actividades/ranking`);
+    return res.data;
+  },
+  async getClaseVersusRanking(claseId: string) {
+    const res = await api.get(`/clases/${claseId}/actividades/ranking/versus`);
     return res.data;
   }
 };

@@ -5,6 +5,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
+import { ActividadModule } from '../actividad/actividad.module';
 import { VersusController } from './versus.controller';
 import { VersusService } from './versus.service';
 import { VersusGateway } from './versus.gateway';
@@ -18,9 +19,10 @@ import { VersusGateway } from './versus.gateway';
   imports: [
     ConfigModule, // Para acceder a las variables de entorno
     AuthModule,
+    ActividadModule,
   ],
   controllers: [VersusController],
   providers: [VersusService, VersusGateway],
   exports: [VersusService], // Por si otros módulos necesitan acceder
 })
-export class VersusModule {}
+export class VersusModule { }
