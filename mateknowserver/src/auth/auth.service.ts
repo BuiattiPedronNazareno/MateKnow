@@ -3,7 +3,7 @@ import { SupabaseService } from '../lib/supabase.service';
 
 @Injectable()
 export class AuthService {
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(private supabaseService: SupabaseService) { }
 
   /**
    * Valida un JWT token de Supabase y retorna los datos del usuario
@@ -23,7 +23,7 @@ export class AuthService {
       // Opcionalmente, obtener datos adicionales del usuario desde tu tabla usuarios
       const { data: userData, error: userError } = await supabase
         .from('usuarios')
-        .select('id, nombre, apellido, email')
+        .select('id, nombre, apellido, email, alias')
         .eq('id', user.id)
         .single();
 
@@ -38,6 +38,7 @@ export class AuthService {
         ...(userData && {
           nombre: userData.nombre,
           apellido: userData.apellido,
+          alias: userData.alias,
         }),
       };
     } catch (error) {
@@ -61,22 +62,39 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    // Fetch additional user data
+    const { data: userData } = await supabase
+      .from('usuarios')
+      .select('nombre, apellido, alias')
+      .eq('id', data.user.id)
+      .single();
+
     return {
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,
-      user: data.user,
+      user: {
+        ...data.user,
+        ...userData
+      },
     };
   }
 
   /**
    * Ejemplo de registro (si lo necesitas)
    */
-  async register(email: string, password: string, nombre: string, apellido: string) {
+  async register(email: string, password: string, nombre: string, apellido: string, alias: string) {
     const supabase = this.supabaseService.getClient();
 
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        data: {
+          nombre,
+          apellido,
+          alias,
+        },
+      },
     });
 
     if (error) {
@@ -85,12 +103,22 @@ export class AuthService {
 
     // Insertar datos adicionales en la tabla usuarios
     if (data.user) {
-      await supabase.from('usuarios').insert({
+      // Usamos el cliente admin para saltar las políticas RLS y asegurar la inserción
+      const adminSupabase = this.supabaseService.getAdminClient();
+
+      const { error: insertError } = await adminSupabase.from('usuarios').upsert({
         id: data.user.id,
         email,
         nombre,
         apellido,
+        alias,
+        rol_id: 1,
       });
+
+      if (insertError) {
+        console.error('Error al insertar usuario en tabla pública:', insertError);
+        // No lanzamos error para no bloquear el registro si el usuario ya se creó en Auth
+      }
     }
 
     return {

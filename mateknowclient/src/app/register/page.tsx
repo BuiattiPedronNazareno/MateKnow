@@ -12,8 +12,9 @@ import {
   InputAdornment,
   IconButton,
   Stack,
+  Tooltip,
 } from '@mui/material';
-import { Visibility, VisibilityOff } from '@mui/icons-material';
+import { Visibility, VisibilityOff, InfoOutlined } from '@mui/icons-material';
 import AuthLayout from '../components/AuthLayout';
 import { authService } from '../services/authService';
 
@@ -25,6 +26,7 @@ export default function RegisterPage() {
     confirmPassword: '',
     nombre: '',
     apellido: '',
+    alias: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -41,7 +43,7 @@ export default function RegisterPage() {
   };
 
   const validateForm = (): boolean => {
-    if (!formData.email || !formData.password || !formData.nombre || !formData.apellido) {
+    if (!formData.email || !formData.password || !formData.nombre || !formData.apellido || !formData.alias) {
       setError('Todos los campos son obligatorios');
       return false;
     }
@@ -73,9 +75,9 @@ export default function RegisterPage() {
     try {
       const { confirmPassword, ...registerData } = formData;
       const response = await authService.register(registerData);
-      
+
       setSuccess('¡Registro exitoso! Redirigiendo al login...');
-      
+
       // Redirigir al login después de 2 segundos
       setTimeout(() => {
         router.push('/login');
@@ -135,6 +137,26 @@ export default function RegisterPage() {
             disabled={loading}
           />
         </Stack>
+
+        <TextField
+          fullWidth
+          label="Alias"
+          name="alias"
+          value={formData.alias}
+          onChange={handleChange}
+          required
+          sx={{ mb: 2 }}
+          disabled={loading}
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title="Este alias será visible públicamente en los rankings y versus" arrow>
+                  <InfoOutlined color="action" sx={{ cursor: 'help' }} />
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+        />
 
         <TextField
           fullWidth

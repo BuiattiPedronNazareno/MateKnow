@@ -15,4 +15,8 @@ export class RegisterDto {
   @IsString({ message: 'El apellido debe ser un texto' })
   @IsNotEmpty({ message: 'El apellido es requerido' })
   apellido: string;
+
+  @IsString({ message: 'El alias debe ser un texto' })
+  @IsNotEmpty({ message: 'El alias es requerido' })
+  alias: string;
 }
