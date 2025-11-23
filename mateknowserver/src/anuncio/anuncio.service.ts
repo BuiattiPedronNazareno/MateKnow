@@ -53,14 +53,6 @@ async createAnuncio(
       try {
         const link = `/clases/${claseId}/anuncio/${anuncio.id}`;
         
-        // Llamada al servicio de notificaciones
-        await this.notificacionService.notificarClase(
-          claseId,
-          `Nuevo anuncio: ${createAnuncioDto.titulo}`,
-          'El profesor ha publicado novedades en la clase.',
-          link
-        );
-
         await this.notificacionService.notificarClase(
           claseId,
           `Nuevo anuncio: ${createAnuncioDto.titulo}`,
