@@ -19,7 +19,7 @@ import {
 } from "@mui/material";
 import { EmojiEventsRounded, PersonRounded } from "@mui/icons-material";
 import { io, Socket } from "socket.io-client";
-import { actividadService } from "../services/actividadService"; // Need to add getGlobalRanking here
+import { actividadService } from "../services/actividadService";
 import { authService } from "../services/authService";
 
 interface RankingUser {
@@ -51,6 +51,14 @@ export default function RankingWidget({
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabIndex(newValue);
+  };
+
+  // Helper para mostrar Nombre si no hay Alias (Soluciona el problema de nombres en blanco)
+  const getDisplayName = (usuario: RankingUser["usuario"]) => {
+    if (usuario.alias && usuario.alias.trim() !== "") {
+      return usuario.alias;
+    }
+    return `${usuario.nombre} ${usuario.apellido}`;
   };
 
   // Fetch initial data
@@ -169,7 +177,8 @@ export default function RankingWidget({
           color: "white",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: "center", // Centrado
+          position: "relative", // Necesario para posicionar la pill absoluta
         }}
       >
         <Typography
@@ -177,9 +186,9 @@ export default function RankingWidget({
           fontWeight="bold"
           sx={{ display: "flex", alignItems: "center", gap: 1.5 }}
         >
-          <EmojiEventsRounded sx={{ color: "#FFD700", fontSize: 28 }} />
           {claseId ? "Clasificación de Clase" : "Clasificación Global"}
         </Typography>
+        
         <Chip
           label="Temporada 1"
           size="small"
@@ -188,6 +197,8 @@ export default function RankingWidget({
             color: "white",
             fontWeight: "bold",
             backdropFilter: "blur(4px)",
+            position: "absolute", // Posicionamiento absoluto
+            right: 50, // AUMENTADO: Antes era 20, ahora 50 para alejarlo del borde curvo
           }}
         />
       </Box>
@@ -232,6 +243,9 @@ export default function RankingWidget({
                       : index === 1
                         ? "#C0C0C0"
                         : "#CD7F32";
+                  
+                  // Calcular inicial para el avatar (fallback)
+                  const inicialName = item.usuario.alias?.[0] || item.usuario.nombre?.[0];
 
                   return (
                     <ListItem
@@ -286,7 +300,7 @@ export default function RankingWidget({
                             border: isTop3 ? `2px solid ${medalColor}` : "none",
                           }}
                         >
-                          {item.usuario.alias?.[0] || <PersonRounded />}
+                          {inicialName || <PersonRounded />}
                         </Avatar>
                       </ListItemAvatar>
 
@@ -297,14 +311,10 @@ export default function RankingWidget({
                             fontWeight="bold"
                             noWrap
                           >
-                            {item.usuario.alias}
+                            {/* Uso del helper para mostrar nombre */}
+                            {getDisplayName(item.usuario)}
                           </Typography>
                         }
-                        // secondary={
-                        //     <Typography variant="caption" color="text.secondary" noWrap>
-                        //         {item.usuario.email}
-                        //     </Typography>
-                        // }
                         sx={{ mr: 2 }}
                       />
 
@@ -368,6 +378,9 @@ export default function RankingWidget({
                       : index === 1
                         ? "#C0C0C0"
                         : "#CD7F32";
+                  
+                  // Calcular inicial para el avatar (fallback)
+                  const inicialName = item.usuario.alias?.[0] || item.usuario.nombre?.[0];
 
                   return (
                     <ListItem
@@ -422,7 +435,7 @@ export default function RankingWidget({
                             border: isTop3 ? `2px solid ${medalColor}` : "none",
                           }}
                         >
-                          {item.usuario.alias?.[0] || <PersonRounded />}
+                          {inicialName || <PersonRounded />}
                         </Avatar>
                       </ListItemAvatar>
 
@@ -433,18 +446,10 @@ export default function RankingWidget({
                             fontWeight="bold"
                             noWrap
                           >
-                            {item.usuario.alias}
+                             {/* Uso del helper para mostrar nombre */}
+                            {getDisplayName(item.usuario)}
                           </Typography>
                         }
-                        // secondary={
-                        //   <Typography
-                        //     variant="caption"
-                        //     color="text.secondary"
-                        //     noWrap
-                        //   >
-                        //     {item.usuario.email}
-                        //   </Typography>
-                        // }
                         sx={{ mr: 2 }}
                       />
 

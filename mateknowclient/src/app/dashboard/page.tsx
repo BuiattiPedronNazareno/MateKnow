@@ -47,6 +47,8 @@ import { authService } from '../services/authService';
 import MateIcon from '../components/icons/MateIcon';
 import RankingWidget from '../components/RankingWidget';
 
+import NotificationMenu from '../components/NotificationMenu';
+
 export default function DashboardPage() {
   const router = useRouter();
   const theme = useTheme();
@@ -152,9 +154,7 @@ export default function DashboardPage() {
         </Stack>
 
         <Stack direction="row" spacing={1}>
-          <IconButton size="small" color="primary">
-            <NotificationsNoneRounded />
-          </IconButton>
+          <NotificationMenu />
           <Avatar
             sx={{
               bgcolor: 'secondary.main',

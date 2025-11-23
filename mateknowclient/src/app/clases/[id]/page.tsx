@@ -706,24 +706,36 @@ export default function DetalleClasePage() {
                 {anuncios.map((anuncio) => (
                   <Card
                     key={anuncio.id}
+                    onClick={() => router.push(`/clases/${claseId}/anuncio/${anuncio.id}`)}
                     sx={{
                       position: 'relative',
                       background: '#FFFACD',
-                      borderRadius: 1,
+                      borderRadius: 2, // Un poco más redondeado queda mejor con la animación
                       border: '1px solid #F0E68C',
-                      boxShadow: '4px 4px 8px rgba(0,0,0,0.15)',
+                      boxShadow: '4px 4px 8px rgba(0,0,0,0.1)',
+                      cursor: 'pointer',
+                      
+                      // --- ANIMACIÓN HOVER ---
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', 
+                      '&:hover': {
+                        transform: 'scale(1.02)', 
+                        boxShadow: '0 12px 24px rgba(139, 69, 19, 0.25)', 
+                        zIndex: 1, 
+                        borderColor: '#DEB887'
+                      }
                     }}
                   >
-                    {/* ... (CONTENIDO DE LA TARJETA DE ANUNCIO SE MANTIENE IGUAL) ... */}
-                    {/* ... (CardContent, Header, Descripción, Avatar, Comentarios, etc.) ... */}
-                    {/* ... Copia el contenido interno de la Card que ya tenías ... */}
+
                     <CardContent sx={{ pt: 3 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1, gap: 1 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, color: '#3E2723', flex: 1 }}>{anuncio.titulo}</Typography>
                         {clase.isProfesor && (
                           <IconButton
                             size="small"
-                            onClick={(e: React.MouseEvent<HTMLElement>) => handleMenuOpen(e, anuncio)}
+                            onClick={(e: React.MouseEvent<HTMLElement>) => {
+                              e.stopPropagation(); 
+                              handleMenuOpen(e, anuncio);
+                            }}
                             sx={{ color: '#8B4513', ml: 'auto', display: anuncio.autor.id === user?.id ? 'flex' : 'none' }}
                           >
                             <MoreVert />
@@ -742,12 +754,22 @@ export default function DetalleClasePage() {
 
                       {/* SECCIÓN DE COMENTARIOS (Sin cambios en lógica interna) */}
                       <Box sx={{ display: 'flex', alignItems: 'center', mt: 2, pt: 2, borderTop: '1px solid rgba(0,0,0,0.05)' }}>
-                        <Button size="small" startIcon={<CommentIcon />} onClick={() => handleToggleComments(anuncio.id)} sx={{ color: '#8B4513' }}>
-                          {expandedAnuncioId === anuncio.id ? 'Ocultar consultas' : 'Ver consultas'}
+                        <Button 
+                          size="small" 
+                          startIcon={<CommentIcon />} 
+                          onClick={(e) => {
+                            e.stopPropagation(); // Evita navegar al abrir comentarios
+                            handleToggleComments(anuncio.id);
+                          }} 
+                          sx={{ color: '#8B4513' }}
+                        >
+                          {expandedAnuncioId === anuncio.id 
+                            ? 'Ocultar consultas' 
+                            : `Ver consultas (${anuncio.cantidadComentarios || 0})`}
                         </Button>
                       </Box>
                       {/* ... (Resto del bloque de comentarios igual que antes) ... */}
-                      <Collapse in={expandedAnuncioId === anuncio.id} timeout="auto" unmountOnExit>
+                      <Collapse in={expandedAnuncioId === anuncio.id} timeout="auto" unmountOnExit onClick={(e) => e.stopPropagation()}>
                         <Box sx={{ mt: 2, pl: 2, pr: 2, pb: 2, bgcolor: 'rgba(255,255,255,0.5)', borderRadius: 1 }}>
                           {loadingComments === anuncio.id ? (
                             <CircularProgress size={20} sx={{ display: 'block', mx: 'auto', my: 2 }} />
@@ -1336,7 +1358,32 @@ export default function DetalleClasePage() {
         <Dialog open={openDeleteAnuncioDialog} onClose={() => setOpenDeleteAnuncioDialog(false)}><DialogTitle>Eliminar Anuncio</DialogTitle><DialogActions><Button onClick={() => setOpenDeleteAnuncioDialog(false)}>Cancelar</Button><Button color="error" onClick={async () => { if (selectedAnuncio) await anuncioService.deleteAnuncio(selectedAnuncio.id); setOpenDeleteAnuncioDialog(false); loadAnuncios(); }}>Eliminar</Button></DialogActions></Dialog>
 
         {/* Crear/Editar Anuncio */}
-        <Dialog open={openAnuncioDialog} onClose={handleCloseAnuncioDialog} fullWidth><DialogTitle>{editingAnuncio ? 'Editar' : 'Nuevo'} Anuncio</DialogTitle><DialogContent sx={{ pt: 2 }}><TextField fullWidth label="Título" value={anuncioFormData.titulo} onChange={(e) => setAnuncioFormData({ ...anuncioFormData, titulo: e.target.value })} sx={{ mb: 2 }} /><TextField fullWidth multiline rows={4} label="Descripción" value={anuncioFormData.descripcion} onChange={(e) => setAnuncioFormData({ ...anuncioFormData, descripcion: e.target.value })} /></DialogContent><DialogActions><Button onClick={handleCloseAnuncioDialog}>Cancelar</Button><Button variant="contained" onClick={handleSubmitAnuncio} disabled={submittingAnuncio}>{editingAnuncio ? 'Guardar' : 'Publicar'}</Button></DialogActions></Dialog>
+        <Dialog open={openAnuncioDialog} onClose={handleCloseAnuncioDialog} fullWidth>
+          <DialogTitle>{editingAnuncio ? 'Editar' : 'Nuevo'} Anuncio</DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <TextField 
+              fullWidth 
+              label="Título" 
+              value={anuncioFormData.titulo} 
+              onChange={(e) => setAnuncioFormData({ ...anuncioFormData, titulo: e.target.value })} 
+              sx={{ mb: 2, mt: 1 }} 
+            />
+            <TextField 
+              fullWidth 
+              multiline 
+              rows={4} 
+              label="Descripción" 
+              value={anuncioFormData.descripcion} 
+              onChange={(e) => setAnuncioFormData({ ...anuncioFormData, descripcion: e.target.value })} 
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseAnuncioDialog}>Cancelar</Button>
+            <Button variant="contained" onClick={handleSubmitAnuncio} disabled={submittingAnuncio}>
+              {editingAnuncio ? 'Guardar' : 'Publicar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Promover/Matricular/Salir */}
         <Dialog open={openPromoteDialog} onClose={() => setOpenPromoteDialog(false)}><DialogTitle>Promover</DialogTitle><DialogActions><Button onClick={() => setOpenPromoteDialog(false)}>Cancelar</Button><Button onClick={handlePromoverProfesor}>Confirmar</Button></DialogActions></Dialog>
