@@ -751,7 +751,7 @@ export class ActividadService {
     try {
       const { data: userData } = await supabase
         .from('usuarios')
-        .select('id, nombre, apellido, email')
+        .select('id, nombre, apellido, email, alias')
         .eq('id', userId)
         .single();
 
@@ -985,7 +985,7 @@ export class ActividadService {
       .select(`
         puntaje,
         usuario:usuario_id (
-          id, nombre, apellido, email
+          id, nombre, apellido, email, alias
         )
       `)
       .eq('estado', 'finished');
@@ -1024,7 +1024,7 @@ export class ActividadService {
       .select(`
         puntaje,
         usuario:usuario_id (
-          id, nombre, apellido, email
+          id, nombre, apellido, email, alias
         )
       `);
 
@@ -1059,7 +1059,7 @@ export class ActividadService {
       .select(`
         puntaje,
         usuario:usuario_id (
-          id, nombre, apellido, email
+          id, nombre, apellido, email, alias
         ),
         actividad!inner(clase_id)
       `)
@@ -1100,7 +1100,7 @@ export class ActividadService {
       .select(`
         puntaje,
         usuario:usuario_id (
-          id, nombre, apellido, email
+          id, nombre, apellido, email, alias
         )
       `)
       .eq('clase_id', claseId);
