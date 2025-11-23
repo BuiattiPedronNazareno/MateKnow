@@ -763,7 +763,9 @@ export default function DetalleClasePage() {
                           }} 
                           sx={{ color: '#8B4513' }}
                         >
-                          {expandedAnuncioId === anuncio.id ? 'Ocultar consultas' : 'Ver consultas'}
+                          {expandedAnuncioId === anuncio.id 
+                            ? 'Ocultar consultas' 
+                            : `Ver consultas (${anuncio.cantidadComentarios || 0})`}
                         </Button>
                       </Box>
                       {/* ... (Resto del bloque de comentarios igual que antes) ... */}
@@ -1356,7 +1358,32 @@ export default function DetalleClasePage() {
         <Dialog open={openDeleteAnuncioDialog} onClose={() => setOpenDeleteAnuncioDialog(false)}><DialogTitle>Eliminar Anuncio</DialogTitle><DialogActions><Button onClick={() => setOpenDeleteAnuncioDialog(false)}>Cancelar</Button><Button color="error" onClick={async () => { if (selectedAnuncio) await anuncioService.deleteAnuncio(selectedAnuncio.id); setOpenDeleteAnuncioDialog(false); loadAnuncios(); }}>Eliminar</Button></DialogActions></Dialog>
 
         {/* Crear/Editar Anuncio */}
-        <Dialog open={openAnuncioDialog} onClose={handleCloseAnuncioDialog} fullWidth><DialogTitle>{editingAnuncio ? 'Editar' : 'Nuevo'} Anuncio</DialogTitle><DialogContent sx={{ pt: 2 }}><TextField fullWidth label="Título" value={anuncioFormData.titulo} onChange={(e) => setAnuncioFormData({ ...anuncioFormData, titulo: e.target.value })} sx={{ mb: 2 }} /><TextField fullWidth multiline rows={4} label="Descripción" value={anuncioFormData.descripcion} onChange={(e) => setAnuncioFormData({ ...anuncioFormData, descripcion: e.target.value })} /></DialogContent><DialogActions><Button onClick={handleCloseAnuncioDialog}>Cancelar</Button><Button variant="contained" onClick={handleSubmitAnuncio} disabled={submittingAnuncio}>{editingAnuncio ? 'Guardar' : 'Publicar'}</Button></DialogActions></Dialog>
+        <Dialog open={openAnuncioDialog} onClose={handleCloseAnuncioDialog} fullWidth>
+          <DialogTitle>{editingAnuncio ? 'Editar' : 'Nuevo'} Anuncio</DialogTitle>
+          <DialogContent sx={{ pt: 2 }}>
+            <TextField 
+              fullWidth 
+              label="Título" 
+              value={anuncioFormData.titulo} 
+              onChange={(e) => setAnuncioFormData({ ...anuncioFormData, titulo: e.target.value })} 
+              sx={{ mb: 2, mt: 1 }} 
+            />
+            <TextField 
+              fullWidth 
+              multiline 
+              rows={4} 
+              label="Descripción" 
+              value={anuncioFormData.descripcion} 
+              onChange={(e) => setAnuncioFormData({ ...anuncioFormData, descripcion: e.target.value })} 
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseAnuncioDialog}>Cancelar</Button>
+            <Button variant="contained" onClick={handleSubmitAnuncio} disabled={submittingAnuncio}>
+              {editingAnuncio ? 'Guardar' : 'Publicar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Promover/Matricular/Salir */}
         <Dialog open={openPromoteDialog} onClose={() => setOpenPromoteDialog(false)}><DialogTitle>Promover</DialogTitle><DialogActions><Button onClick={() => setOpenPromoteDialog(false)}>Cancelar</Button><Button onClick={handlePromoverProfesor}>Confirmar</Button></DialogActions></Dialog>
