@@ -125,8 +125,9 @@ async createAnuncio(
             nombre,
             apellido,
             email
-          )
-        `, { count: 'exact' })
+          ),
+          comentario(count)
+        `, { count: 'exact' }) 
         .eq('clase_id', claseId)
         .order('created_at', { ascending: false })
         .range(from, to);
@@ -500,6 +501,8 @@ async createAnuncio(
         apellido: anuncio.autor.apellido,
         email: anuncio.autor.email,
       },
+
+      cantidadComentarios: anuncio.comentario && anuncio.comentario[0] ? anuncio.comentario[0].count : 0, 
       createdAt: anuncio.created_at,
       updatedAt: anuncio.updated_at || anuncio.created_at,
     };
