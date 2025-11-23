@@ -14,7 +14,7 @@ import {
   DeleteSweep
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
-import { notificacionService } from '../services/notificationService'; // Asegúrate de que la ruta sea correcta
+import { notificacionService } from '../services/notificationService';
 
 export default function NotificationMenu() {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -89,7 +89,7 @@ export default function NotificationMenu() {
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleClose}
-        disableScrollLock={true} // Evita que la página salte/se desplace
+        disableScrollLock={true}
         anchorOrigin={{
           vertical: 'bottom',
           horizontal: 'right',
@@ -163,8 +163,9 @@ export default function NotificationMenu() {
                   }}
                 >
                   <ListItemText
+                    disableTypography
                     primary={
-                      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={0.5}>
+                      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={0.5} >
                         <Typography
                           variant="body2"
                           sx={{
