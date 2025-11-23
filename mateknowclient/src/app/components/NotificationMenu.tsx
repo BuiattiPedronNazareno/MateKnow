@@ -104,7 +104,12 @@ export default function NotificationMenu() {
             maxHeight: 400,
             mt: 1.5,
             borderRadius: 2,
-            boxShadow: '0px 5px 15px rgba(0,0,0,0.2)'
+            boxShadow: '0px 5px 15px rgba(0,0,0,0.2)',
+            overflowY: 'auto',
+            scrollbarWidth: 'none',
+            '&::-webkit-scrollbar': {
+              display: 'none',
+            },
           }
         }}
       >
