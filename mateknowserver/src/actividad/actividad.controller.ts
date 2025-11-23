@@ -80,9 +80,9 @@ export class ActividadController {
   @Post('intento/:id/finalizar')
   @HttpCode(HttpStatus.OK)
   async finalizarIntento(
-    @Param('id') resultadoId: string, 
-    @Body() dto: FinalizarIntentoDto, 
-    @Request() req
+    @Param('id') resultadoId: string,
+    @Body() dto: FinalizarIntentoDto,
+    @Request() req,
   ) {
     return this.actividadService.finalizarIntento(resultadoId, req.user.id, req.token, dto);
   }

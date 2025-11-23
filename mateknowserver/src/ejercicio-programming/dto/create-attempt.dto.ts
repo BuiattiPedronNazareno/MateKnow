@@ -11,10 +11,6 @@ export class CreateAttemptDto {
   @IsNotEmpty()
   ejercicioId!: string;
 
-  @IsUUID()
-  @IsNotEmpty()
-  usuarioId!: string;
-
   @IsString()
   @IsNotEmpty()
   codigo!: string;

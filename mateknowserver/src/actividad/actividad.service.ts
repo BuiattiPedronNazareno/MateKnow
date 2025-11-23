@@ -541,7 +541,11 @@ export class ActividadService {
 
     let respuestas = (intento.respuestas as any[]) || [];
     respuestas = respuestas.filter(r => r.ejercicioId !== dto.ejercicioId);
-    respuestas.push(dto);
+    respuestas.push({
+      ejercicioId: dto.ejercicioId,
+      respuesta: dto.respuesta, 
+      timestamp: new Date().toISOString()
+    });
 
     const { error } = await supabase
       .from('actividad_resultado')

@@ -18,12 +18,16 @@ export const programmingService = {
       body: JSON.stringify(payload),
     })).json(),
 
-  saveAttempt: async (payload: any) =>
-    (await fetch(`${API}/programming/attempts`, {
+  saveAttempt: async (payload: any) => {
+    // ⭐ IMPORTANTE: NO incluir usuarioId, el backend lo obtiene del token
+    const { usuarioId, ...cleanPayload } = payload; // Eliminar usuarioId si existe
+    
+    return (await fetch(`${API}/programming/attempts`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    })).json(),
+      body: JSON.stringify(cleanPayload), // ⭐ Enviar sin usuarioId
+    })).json();
+  },
 
   getAttempts: async (ejercicioId?: string, usuarioId?: string) => {
     const params = new URLSearchParams();

@@ -123,9 +123,20 @@ export default function RealizarActividadPage() {
     
     initEvaluation();
     
-    // Cleanup opcional: si desmonta, permitir reiniciar (útil en dev)
-    return () => { initialized.current = false; };
-  }, [actividadId, claseId, isReviewModeParam, intentoIdParam]);
+    // ⭐ NUEVO: Restaurar el step después de cargar
+    const savedStep = sessionStorage.getItem('current_step');
+      if (savedStep) {
+        const step = parseInt(savedStep);
+        if (!isNaN(step) && step >= 0) {
+          console.log('🔄 Restaurando step:', step);
+          setActiveStep(step);
+          sessionStorage.removeItem('current_step'); // Limpiar después de usar
+        }
+      }
+      
+      // Cleanup opcional: si desmonta, permitir reiniciar (útil en dev)
+      return () => { initialized.current = false; };
+    }, [actividadId, claseId, isReviewModeParam, intentoIdParam]);
 
 
   const initEvaluation = async () => {
@@ -155,8 +166,19 @@ export default function RealizarActividadPage() {
         
         // Cargar respuestas previas si existen
         const map: any = {};
-        (intentoRes.intento.respuestas || []).forEach((r: any) => { map[r.ejercicioId] = r.respuesta; });
+        (intentoRes.intento.respuestas || []).forEach((r: any) => { 
+          // ⭐ NUEVO: Manejar respuestas de programación (objetos) y normales (strings)
+          if (typeof r.respuesta === 'object' && r.respuesta !== null) {
+            // Es una respuesta de programación, guardar el objeto completo
+            map[r.ejercicioId] = r.respuesta;
+          } else {
+            // Es una respuesta normal (UUID de opción o texto)
+            map[r.ejercicioId] = r.respuesta;
+          }
+        });
         setRespuestasLocales(map);
+        
+        console.log('📊 Respuestas cargadas:', map);
       }
 
     } catch (err: any) {
@@ -166,6 +188,20 @@ export default function RealizarActividadPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (ejercicios.length > 0) {
+      const savedStep = sessionStorage.getItem('current_step');
+      if (savedStep) {
+        const step = parseInt(savedStep);
+        if (!isNaN(step) && step >= 0 && step < ejercicios.length) {
+          console.log('🔄 Restaurando posición:', step + 1, 'de', ejercicios.length);
+          setActiveStep(step);
+          sessionStorage.removeItem('current_step');
+        }
+      }
+    }
+  }, [ejercicios]); 
 
   const cargarModoRevision = async (targetIntentoId?: string) => {
     setIsReviewMode(true);
@@ -558,7 +594,8 @@ export default function RealizarActividadPage() {
   const progress = ((activeStep + 1) / ejercicios.length) * 100;
   const isMultipleChoice = currentEjercicio.tipo === 'multiple-choice' || currentEjercicio.tipo === 'latex';
   const isTrueFalse = currentEjercicio.tipo === 'true_false'; 
-  const isAbierta = currentEjercicio.tipo === 'abierta'
+  const isAbierta = currentEjercicio.tipo === 'abierta';
+  const isProgramming = currentEjercicio.tipo === 'programming';
 
   return (
     <MathJaxContext version={3} config={mathjaxConfig}>
@@ -655,8 +692,63 @@ export default function RealizarActividadPage() {
                   />
                 )}
                 
+                {isProgramming && (
+                  <Box sx={{ mb: 2 }}>
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                        Ejercicio de Programación
+                      </Typography>
+                      <Typography variant="body2">
+                        Este ejercicio se resuelve en un editor de código especializado. 
+                        Tu progreso en el resto de preguntas quedará guardado.
+                      </Typography>
+                    </Alert>
+                    
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      onClick={() => {
+                        // ⭐ Guardar TODOS los datos de sesión
+                        if (intento?.id) {
+                          sessionStorage.setItem('current_intento_id', intento.id);
+                          sessionStorage.setItem('current_actividad_id', actividadId);
+                          sessionStorage.setItem('current_clase_id', claseId);
+                          sessionStorage.setItem('current_step', String(activeStep)); // ⭐ NUEVO
+                          
+                          console.log('📝 Datos guardados en sesión:', {
+                            intentoId: intento.id,
+                            actividadId,
+                            claseId,
+                            step: activeStep
+                          });
+                        }
+                        
+                        // Construir URL con parámetro returnTo
+                        const returnUrl = `/actividades/${claseId}/realizar/${actividadId}`;
+                        router.push(`/ejercicios/programming/${currentEjercicio.id}?returnTo=${encodeURIComponent(returnUrl)}`);
+                      }}
+                      sx={{ 
+                        bgcolor: '#2E7D32', 
+                        '&:hover': { bgcolor: '#1B5E20' },
+                        py: 2,
+                        fontSize: '1rem',
+                        fontWeight: 600
+                      }}
+                    >
+                      🖥️ Abrir Editor de Código
+                    </Button>
+                    
+                    {/* Mostrar si ya tiene código guardado */}
+                    {respuestasLocales[currentEjercicio.id] && (
+                      <Alert severity="success" sx={{ mt: 2 }}>
+                        ✅ Ya tienes código guardado para este ejercicio. Puedes editarlo nuevamente.
+                      </Alert>
+                    )}
+                  </Box>
+                )}
+
                 {/* ALERTA DE FALLBACK */}
-                {!isMultipleChoice && !isTrueFalse && !isAbierta && (
+                {!isMultipleChoice && !isTrueFalse && !isAbierta && !isProgramming && (
                   <Alert severity="warning">Tipo de ejercicio desconocido: {currentEjercicio.tipo}</Alert>
                 )}
               </Box>
@@ -664,11 +756,45 @@ export default function RealizarActividadPage() {
 
             {/* BOTONES DE NAVEGACIÓN */}
             <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-              <Button startIcon={<NavigateBefore />} disabled={activeStep === 0} onClick={() => setActiveStep(prev => prev - 1)} size="large" sx={{ color: '#5D4037' }}>Anterior</Button>
+              <Button 
+                startIcon={<NavigateBefore />} 
+                disabled={activeStep === 0} 
+                onClick={() => setActiveStep(prev => prev - 1)} 
+                size="large" 
+                sx={{ color: '#5D4037' }}
+              >
+                Anterior
+              </Button>
+              
               {activeStep === ejercicios.length - 1 ? (
-                <Button variant="contained" endIcon={<CheckCircle />} onClick={handleFinalizar} size="large" sx={{ bgcolor: '#D2691E', fontWeight: 'bold', px: 4, '&:hover': { bgcolor: '#BF360C' } }}>Finalizar</Button>
+                <Button 
+                  variant="contained" 
+                  endIcon={<CheckCircle />} 
+                  onClick={handleFinalizar} 
+                  size="large" 
+                  sx={{ bgcolor: '#D2691E', fontWeight: 'bold', px: 4, '&:hover': { bgcolor: '#BF360C' } }}
+                >
+                  Finalizar
+                </Button>
               ) : (
-                <Button variant="contained" endIcon={<NavigateNext />} onClick={() => setActiveStep(prev => prev + 1)} size="large" sx={{ bgcolor: '#8B4513', '&:hover': { bgcolor: '#654321' } }}>Siguiente</Button>
+                <Button 
+                  variant="contained" 
+                  endIcon={<NavigateNext />} 
+                  onClick={() => {
+                    // ⭐ Si es ejercicio de programación y no tiene respuesta, advertir
+                    if (isProgramming && !respuestasLocales[currentEjercicio.id]) {
+                      const confirmar = window.confirm(
+                        '⚠️ No has completado el ejercicio de programación. ¿Deseas continuar de todos modos?'
+                      );
+                      if (!confirmar) return;
+                    }
+                    setActiveStep(prev => prev + 1);
+                  }} 
+                  size="large" 
+                  sx={{ bgcolor: '#8B4513', '&:hover': { bgcolor: '#654321' } }}
+                >
+                  Siguiente
+                </Button>
               )}
             </Box>
           </Card>

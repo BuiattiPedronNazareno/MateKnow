@@ -28,7 +28,18 @@ export default function ProgramacionEditor({
   tests: any[];
   setTests: (t: any[]) => void;
 }) {
-  const addTest = () => setTests([...tests, { stdin: "", expected: "", weight: 1 }]);
+  const addTest = () => {
+    setTests([
+      ...tests, 
+      { 
+        stdin: "", 
+        expected: "", 
+        weight: 1,
+        timeout_seconds: 3, 
+        public: false,      
+      }
+    ]);
+  };
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3, pb: "2em" }}>

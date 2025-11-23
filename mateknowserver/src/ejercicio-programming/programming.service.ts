@@ -11,6 +11,44 @@ export class ProgrammingService {
   private pistonUrl = (process.env.PISTON_URL || 'https://emkc.org/api/v2').replace(/\/$/, '');
   private pistonToken = process.env.PISTON_TOKEN;
 
+  async createProgrammingExercise(dto: {
+    tipoId: string;
+    actividad_id?: string;
+    enunciado: string;
+    puntos?: number;
+    metadata?: any;
+    creadoPor?: string;
+    tests?: any[];
+  }) {
+    const { data: ejercicio, error } = await this.supabase
+      .from("ejercicio")
+      .insert({
+        tipo_id: dto.tipoId,
+        actividad_id: dto.actividad_id,
+        enunciado: dto.enunciado,
+        puntos: dto.puntos ?? 1,
+        metadata: dto.metadata ?? {},
+        creado_por: dto.creadoPor ?? null,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (Array.isArray(dto.tests) && dto.tests.length > 0) {
+      for (const t of dto.tests) {
+        await this.createTestCase({
+          ejercicio_id: ejercicio.id,
+          stdin: t.stdin,
+          expected: t.expected,
+          weight: t.weight ?? 1,
+        });
+      }
+    }
+
+    return ejercicio;
+  }
+
   async getTestCasesByEjercicio(ejercicioId: string) {
     const { data, error } = await this.supabase
       .from('test_case')
@@ -23,13 +61,26 @@ export class ProgrammingService {
   }
 
   async runOnPiston(language: string, version: string | null, code: string, stdin = '') {
+    // ⭐ CORRECCIÓN: Usar /execute en lugar de construir manualmente
     const body: any = {
       language,
-      files: [{ name: `Main.${language === 'python' ? 'py' : 'txt'}`, content: code }],
+      version: version || '*', // ⭐ Usar '*' para última versión si no se especifica
+      files: [
+        { 
+          name: `main.${language === 'python' ? 'py' : language === 'javascript' ? 'js' : 'txt'}`, 
+          content: code 
+        }
+      ],
       stdin,
     };
-    if (version) body.version = version;
-
+  
+    console.log('🔵 Sending to Piston:', {
+      url: `${this.pistonUrl}/execute`,
+      language,
+      version: body.version,
+      codeLength: code.length
+    });
+  
     const res = await fetch(`${this.pistonUrl}/execute`, {
       method: 'POST',
       headers: {
@@ -38,13 +89,17 @@ export class ProgrammingService {
       },
       body: JSON.stringify(body),
     });
-
+  
     if (!res.ok) {
       const text = await res.text();
-      throw new InternalServerErrorException(`Piston error ${res.status}: ${text}`);
+      console.error('❌ Piston error response:', text.substring(0, 200));
+      throw new InternalServerErrorException(`Piston error ${res.status}: ${text.substring(0, 100)}`);
     }
-
-    return res.json();
+  
+    const result = await res.json();
+    console.log('✅ Piston response:', result);
+    
+    return result;
   }
 
   async runTests(language: string, version: string | null, code: string, testCases: any[]) {

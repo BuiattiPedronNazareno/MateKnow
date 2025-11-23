@@ -157,6 +157,7 @@ export default function EjercicioForm({
       return;
     }
 
+    // ==================== LÓGICA ESPECÍFICA PARA PROGRAMACIÓN ====================
     if (tipoSeleccionado?.key === "programming") {
       if (!metadata?.lenguaje?.trim()) {
         setFetchError("El lenguaje es obligatorio");
@@ -167,28 +168,87 @@ export default function EjercicioForm({
         setFetchError("Debe agregar al menos un test");
         return;
       }
-      
+
+      for (let i = 0; i < tests.length; i++) {
+        if (!(tests[i] as any).expected?.trim()) {
+          setFetchError(`El test ${i + 1} debe tener una salida esperada`);
+          return;
+        }
+      }
+
       try {
-        await ejercicioService.crearEjercicioProgramacion({
+        setFetchError("");
+        
+        console.log('📤 Datos a enviar (programming):', {
           tipoId,
           enunciado: enunciado.trim(),
           puntos: parseInt(puntos) || 1,
-          metadata,
-          tests,
+          metadata: {
+            lenguaje: metadata.lenguaje,
+            boilerplate: metadata.boilerplate || "",
+          },
+          tests: tests.map((t: any) => ({
+            stdin: t.stdin || "",
+            expected: t.expected,
+            weight: t.weight ?? 1,
+            timeout_seconds: t.timeout_seconds ?? 3, 
+            public: t.public ?? false,
+          })),
         });
-        
-        if (onCancel) {
-          onCancel(); 
-        } else {
-          window.location.href = '/ejercicios'; 
-        }
-        return; 
+
+        // ✅ USAR EL MÉTODO CORRECTO DEL SERVICIO
+        const result = await ejercicioService.crearEjercicioProgramacion({
+          tipoId,
+          enunciado: enunciado.trim(),
+          puntos: parseInt(puntos) || 1,
+          metadata: {
+            lenguaje: metadata.lenguaje,
+            boilerplate: metadata.boilerplate || "",
+          },
+          tests: tests.map((t: any) => ({
+            stdin: t.stdin || "",
+            expected: t.expected,
+            weight: t.weight ?? 1,
+            timeout_seconds: t.timeout_seconds ?? 3,
+            public: t.public ?? false,
+          })),
+        });
+
+        console.log("✅ Ejercicio de programación creado:", result);
+
+        // ✅ LLAMAR AL onSubmit CON LA ESTRUCTURA CORRECTA
+        // Pasamos TODA la info necesaria para que page.tsx pueda vincular el ejercicio
+        onSubmit({
+          id: result.ejercicio.id,
+          tipoId,
+          enunciado: enunciado.trim(),
+          puntos: parseInt(puntos) || 1,
+          isVersus: false,
+          opciones: [],
+          // ⚠️ IMPORTANTE: También pasamos metadata y tests para que page.tsx los tenga disponibles
+          metadata: {
+            lenguaje: metadata.lenguaje,
+            boilerplate: metadata.boilerplate || "",
+          },
+          tests: tests.map((t: any) => ({
+            stdin: t.stdin || "",
+            expected: t.expected,
+            weight: t.weight ?? 1,
+            timeout_seconds: t.timeout_seconds ?? 3,
+            public: t.public ?? false,
+          })),
+        } as any);
+
+        return;
       } catch (err: any) {
-        setFetchError(err.message || 'Error al crear ejercicio de programación');
+        console.error("❌ Error creating programming exercise:", err);
+        setFetchError(err.message || "Error al crear ejercicio de programación");
         return;
       }
     }
+    // ==================== FIN LÓGICA PROGRAMACIÓN ====================
 
+    // VALIDACIONES PARA EJERCICIOS NORMALES
     const correctas = opciones.filter((o) => o.isCorrecta).length;
 
     if (correctas === 0) {
@@ -197,7 +257,9 @@ export default function EjercicioForm({
     }
 
     if (tipoSeleccionado?.key === "true_false" && correctas !== 1) {
-      setFetchError("En Verdadero/Falso debe haber exactamente una opción correcta");
+      setFetchError(
+        "En Verdadero/Falso debe haber exactamente una opción correcta"
+      );
       return;
     }
 

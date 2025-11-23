@@ -29,7 +29,7 @@ import {
   CheckCircle, 
   RadioButtonUnchecked,
   AddRounded,
-} from '@mui/icons-material'; // Importamos el icono de eliminar
+} from '@mui/icons-material';
 import { actividadService } from '@/app/services/actividadService';
 import EjercicioForm from '@/app/components/EjercicioForm';
 import { ejercicioService } from '@/app/services/ejercicioService';
@@ -42,32 +42,24 @@ export default function ActividadVerPage() {
   const router = useRouter();
 
   const [verRespuestas, setVerRespuestas] = useState(false);
-
-  // --- ESTADOS ---
   const [actividad, setActividad] = useState<any | null>(null);
   const [isProfesor, setIsProfesor] = useState(false);
   const [loading, setLoading] = useState(true);
   
-  // Estado para el modal de "Agregar Ejercicio"
   const [openCrearEjercicioModal, setOpenCrearEjercicioModal] = useState(false);
   const [crearEjercicioLoading, setCrearEjercicioLoading] = useState(false);
   const [crearEjercicioError, setCrearEjercicioError] = useState('');
 
-  // Estado para el modal de "Eliminar Ejercicio"
   const [openDeleteExerciseDialog, setOpenDeleteExerciseDialog] = useState(false);
   const [exerciseToDelete, setExerciseToDelete] = useState<string | null>(null);
 
-  // --- CARGA DE DATOS ---
   const loadData = async () => {
     try {
       setLoading(true);
       
-      // CORRECCIÓN: Agregamos claseId como primer parámetro
-      // 1. Obtener la actividad con detalle completo
       const res = await actividadService.getActividadById(claseId, actividadId);
       setActividad(res.actividad);
 
-      // 2. Verificar rol del usuario
       const c = await claseService.getClaseById(claseId);
       setIsProfesor(!!c.clase.isProfesor);
 
@@ -84,26 +76,16 @@ export default function ActividadVerPage() {
     }
   }, [claseId, actividadId]);
 
-  // --- MANEJADORES ---
-
-  // Función para ELIMINAR DEFINITIVAMENTE un ejercicio
   const handleDeleteExercise = async () => {
-    // Cerrar modal inmediatamente
     setOpenDeleteExerciseDialog(false);
     
     if (!exerciseToDelete) return;
 
     try {
-      setLoading(true); // Mostrar carga mientras procesa
-      
-      // LLAMADA CRÍTICA: Usamos eliminarEjercicio del servicio de EJERCICIOS.
-      // Esto borrará el ejercicio de la tabla 'ejercicio' en la BD.
+      setLoading(true);
       await ejercicioService.eliminarEjercicio(exerciseToDelete);
-      
-      // Recargar datos para reflejar que ya no existe
       await loadData();
       console.log('Ejercicio eliminado permanentemente.');
-
     } catch (err: any) {
       console.error(err);
       alert(err.response?.data?.message || 'Error al eliminar el ejercicio');
@@ -113,13 +95,59 @@ export default function ActividadVerPage() {
     }
   };
 
-  // --- RENDERIZADO ---
+  // ✅ FUNCIÓN CORREGIDA - Solo vincula, NO crea
+  const handleCrearEjercicioSubmit = async (payload: any) => {
+    setCrearEjercicioLoading(true);
+    setCrearEjercicioError('');
+    
+    try {
+      // ✅ SI PAYLOAD TIENE 'id', significa que el ejercicio YA FUE CREADO por EjercicioForm
+      // Solo necesitamos vincularlo a la actividad
+      if (payload.id) {
+        console.log('🔗 Ejercicio ya creado, solo vinculando:', payload.id);
+        
+        const prevIds = (actividad.ejercicios || []).map((e: any) => e.id);
+        const newIds = [...prevIds, payload.id];
+        
+        await actividadService.editarActividad(claseId, actividadId, { ejercicioIds: newIds });
+        
+        setOpenCrearEjercicioModal(false);
+        await loadData();
+        
+        console.log('✅ Ejercicio vinculado exitosamente');
+        return;
+      }
+
+      // ❌ Si no tiene ID, es un ejercicio normal que necesitamos crear primero
+      console.log('📝 Creando ejercicio NORMAL');
+      
+      const res = await ejercicioService.crearEjercicio(payload);
+      const newEjercicioId = res?.ejercicio?.id;
+      
+      if (newEjercicioId) {
+        const prevIds = (actividad.ejercicios || []).map((e: any) => e.id);
+        const newIds = [...prevIds, newEjercicioId];
+        
+        await actividadService.editarActividad(claseId, actividadId, { ejercicioIds: newIds });
+        
+        setOpenCrearEjercicioModal(false);
+        await loadData();
+        
+        console.log('✅ Ejercicio creado y vinculado exitosamente');
+      }
+    } catch (err: any) {
+      console.error('❌ Error al crear ejercicio:', err);
+      setCrearEjercicioError(err.response?.data?.message || err.message || 'Error al crear ejercicio');
+    } finally {
+      setCrearEjercicioLoading(false);
+    }
+  };
+
   const wrapLatex = (txt: string) => {
     const t = txt.trim();
     if (t.startsWith("$") && t.endsWith("$")) return txt;
     return txt;
   };
-
 
   if (loading) {
     return (
@@ -149,7 +177,6 @@ export default function ActividadVerPage() {
           <Button onClick={() => router.back()} sx={{ mb: 2, color: '#3E2723' }}>Volver</Button>
           
           <Paper sx={{ p: 4, borderRadius: 2 }}>
-            {/* Header de la Actividad */}
             <Typography variant="h4" sx={{ fontWeight: 600, color: '#3E2723', mb: 1 }}>
               {actividad.nombre}
             </Typography>
@@ -167,11 +194,9 @@ export default function ActividadVerPage() {
               {!actividad.is_visible && <Chip label="Oculta" color="warning" />}
             </Box>
 
-            {/* Botones de Acción Principales */}
             <Box>
               {isProfesor && (
                 <>
-                  {/* NUEVO BOTÓN: Ver/Ocultar Respuestas */}
                   <Button
                     variant="outlined"
                     color="primary"
@@ -184,7 +209,7 @@ export default function ActividadVerPage() {
 
                   <Button
                     variant="contained"
-                    startIcon={<AddRounded />} // Asegúrate de tener AddRounded importado si ya lo usabas
+                    startIcon={<AddRounded />}
                     onClick={() => setOpenCrearEjercicioModal(true)}
                   >
                     Agregar Ejercicio
@@ -199,7 +224,6 @@ export default function ActividadVerPage() {
               Ejercicios ({actividad.ejercicios?.length || 0})
             </Typography>
             
-            {/* LISTA DE EJERCICIOS */}
             {actividad.ejercicios && actividad.ejercicios.length > 0 ? (
               <MathJaxContext
                 version={3}
@@ -242,13 +266,11 @@ export default function ActividadVerPage() {
                       primary={
                         <Box sx={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
                           
-                          {/* 1. ENUNCIADO DEL EJERCICIO */}
                           <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                             <Typography variant="subtitle1" fontWeight="bold">
                               {index + 1}.
                             </Typography>
 
-                            {/* Renderizamos el enunciado usando el contexto padre */}
                             {ej.tipo === "latex" ? (
                               <MathJax dynamic>{wrapLatex(ej.enunciado)}</MathJax>
                             ) : (
@@ -256,7 +278,6 @@ export default function ActividadVerPage() {
                             )}
                           </Box>
 
-                          {/* 2. RESPUESTAS (Visible solo si verRespuestas es true) */}
                           {verRespuestas && ej.opciones && (
                             <Box sx={{ mt: 2, pl: 2, width: '100%' }}>
                               <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 'bold' }}>
@@ -275,7 +296,6 @@ export default function ActividadVerPage() {
                                         p: 1.5,
                                         display: 'flex',
                                         alignItems: 'center',
-                                        // Usamos la variable 'esCorrecta' calculada arriba
                                         borderColor: esCorrecta ? 'success.main' : 'rgba(0,0,0,0.12)',
                                         bgcolor: esCorrecta ? 'rgba(46, 125, 50, 0.08)' : 'transparent',
                                       }}
@@ -334,39 +354,11 @@ export default function ActividadVerPage() {
         </Container>
       </Box>
 
-      {/* --- MODAL: CREAR EJERCICIO --- */}
       <Dialog open={openCrearEjercicioModal} onClose={() => setOpenCrearEjercicioModal(false)} fullWidth maxWidth="md">
         <DialogTitle>Crear y Agregar Ejercicio</DialogTitle>
         <DialogContent>
           <EjercicioForm
-            onSubmit={async (payload: any) => {
-              setCrearEjercicioLoading(true);
-              setCrearEjercicioError('');
-              try {
-                // 1. Crear el ejercicio en la base de datos
-                const res = await ejercicioService.crearEjercicio(payload);
-                const newEjercicioId = res?.ejercicio?.id;
-                
-                if (newEjercicioId) {
-                  // 2. Obtener la lista actual de IDs para no perderlos
-                  const prevIds = (actividad.ejercicios || []).map((e: any) => e.id);
-                  const newIds = [...prevIds, newEjercicioId];
-                  
-                  // 3. Actualizar la actividad vinculando el nuevo ID
-                  await actividadService.editarActividad(claseId, actividadId, { ejercicioIds: newIds });
-                  
-                  setOpenCrearEjercicioModal(false);
-                  
-                  // 4. Recargar la página para mostrar el nuevo ejercicio
-                  await loadData();
-                }
-              } catch (err: any) {
-                console.error(err);
-                setCrearEjercicioError(err.response?.data?.message || 'Error al crear ejercicio');
-              } finally {
-                setCrearEjercicioLoading(false);
-              }
-            }}
+            onSubmit={handleCrearEjercicioSubmit}
             submitButtonText="Crear y agregar"
             loading={crearEjercicioLoading}
             error={crearEjercicioError}
@@ -375,7 +367,6 @@ export default function ActividadVerPage() {
         </DialogContent>
       </Dialog>
 
-      {/* --- MODAL: CONFIRMAR ELIMINACIÓN --- */}
       <Dialog open={openDeleteExerciseDialog} onClose={() => setOpenDeleteExerciseDialog(false)}>
         <DialogTitle>Eliminar ejercicio permanentemente</DialogTitle>
         <DialogContent>

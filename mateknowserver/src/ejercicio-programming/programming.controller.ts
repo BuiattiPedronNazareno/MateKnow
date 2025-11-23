@@ -16,9 +16,18 @@ export class ProgrammingController {
     return await this.svc.runTests(lenguaje, version ?? null, codigo, tests);
   }
 
+  @Post('exercises')
+  async createProgrammingExercise(@Body() dto: any, @Request() req) {
+    return await this.svc.createProgrammingExercise({
+      ...dto,
+      creadoPor: req.user.id, 
+    });
+  }
+
   @Post('attempts')
   async createAttempt(@Body() dto: CreateAttemptDto, @Request() req) {
-    const usuarioId = req.user.id;
+    // ⭐ CAMBIO: Obtener usuarioId del token en lugar del DTO
+    const usuarioId = req.user.id;  // Ya viene del AuthGuard
     
     const tests = await this.svc.getTestCasesByEjercicio(dto.ejercicioId);
     const { runResult, tests: detail, score } = await this.svc.runTests(
@@ -34,7 +43,7 @@ export class ProgrammingController {
 
     const saved = await this.svc.saveAttempt({
       ejercicioId: dto.ejercicioId,
-      usuarioId,
+      usuarioId,  // ⭐ Usar el ID del token
       codigo: dto.codigo,
       lenguaje: dto.lenguaje,
       runResult,
@@ -62,7 +71,8 @@ export class ProgrammingController {
 
   @Get('exercises/:ejercicioId/tests')
   async getTests(@Param('ejercicioId') ejercicioId: string) {
-    return await this.svc.getTestCasesByEjercicio(ejercicioId);
+    const tests = await this.svc.getTestCasesByEjercicio(ejercicioId);
+    return tests || [];
   }
 
   @Post('exercises/:ejercicioId/tests/delete-all')
