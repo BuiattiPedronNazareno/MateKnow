@@ -47,6 +47,7 @@ export interface Anuncio {
     apellido: string;
     email: string;
   };
+  cantidadComentarios: number; 
   createdAt: string;
   updatedAt: string;
 }
@@ -91,6 +92,7 @@ export interface AnunciosResponse {
     lastPage: number;
   };
 }
+
 
 export const anuncioService = {
  

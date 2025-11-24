@@ -11,7 +11,7 @@ import { RegisterDto } from './dto/register.dto';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   /**
    * POST /auth/login
@@ -35,6 +35,7 @@ export class AuthController {
       registerDto.password,
       registerDto.nombre,
       registerDto.apellido,
+      registerDto.alias,
     );
   }
 

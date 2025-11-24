@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+        "strict": false,           // Desactiva modo estricto
     "module": "nodenext",
     "moduleResolution": "nodenext",
     "resolvePackageJsonExports": true,

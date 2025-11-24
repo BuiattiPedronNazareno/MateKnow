@@ -33,11 +33,11 @@ api.interceptors.response.use(
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       localStorage.removeItem('user');
-      
+
       // Solo redirigir si no estamos ya en login/register
-      if (typeof window !== 'undefined' && 
-          !window.location.pathname.includes('/login') && 
-          !window.location.pathname.includes('/register')) {
+      if (typeof window !== 'undefined' &&
+        !window.location.pathname.includes('/login') &&
+        !window.location.pathname.includes('/register')) {
         window.location.href = '/login';
       }
     }
@@ -55,6 +55,7 @@ export interface RegisterData {
   password: string;
   nombre: string;
   apellido: string;
+  alias: string;
 }
 
 export interface AuthResponse {
@@ -88,38 +89,39 @@ export interface RegisterResponse {
 export const authService = {
   async login(data: LoginData): Promise<AuthResponse> {
     const response = await api.post('/login', data);
-    
+
     // DEBUG: Ver estructura de la respuesta
     console.log('authService.login - response.data:', response.data);
-    
+
     // El backend devuelve accessToken y refreshToken directamente (no en session)
     if (response.data.accessToken && response.data.user) {
       console.log('Guardando tokens...');
       localStorage.setItem('access_token', response.data.accessToken);
       localStorage.setItem('refresh_token', response.data.refreshToken);
-      
+
       // Adaptar el formato del usuario para que coincida con lo que espera el frontend
       const userData = {
         id: response.data.user.id,
         email: response.data.user.email,
-        nombre: response.data.user.user_metadata?.nombre || response.data.user.email.split('@')[0],
-        apellido: response.data.user.user_metadata?.apellido || '',
+        nombre: response.data.user.nombre || response.data.user.user_metadata?.nombre || response.data.user.email.split('@')[0],
+        apellido: response.data.user.apellido || response.data.user.user_metadata?.apellido || '',
+        alias: response.data.user.alias || '',
         rol_id: 1, // Valor por defecto
       };
-      
+
       localStorage.setItem('user', JSON.stringify(userData));
-      
+
       // Verificar que se guardaron
       console.log('Token guardado:', localStorage.getItem('access_token') ? 'Sí' : 'No');
       console.log('User guardado:', localStorage.getItem('user'));
-      
+
       // IMPORTANTE: Esperar un momento para asegurar que localStorage se sincronice
       await new Promise(resolve => setTimeout(resolve, 100));
     } else {
       console.error('No hay accessToken en la respuesta del backend');
       console.error('Estructura recibida:', JSON.stringify(response.data, null, 2));
     }
-    
+
     return response.data;
   },
 
@@ -130,7 +132,7 @@ export const authService = {
 
   async logout(): Promise<void> {
     const token = localStorage.getItem('access_token');
-    
+
     if (token) {
       try {
         await api.post('/logout', { access_token: token });
@@ -138,7 +140,7 @@ export const authService = {
         console.error('Error al cerrar sesión:', error);
       }
     }
-    
+
     // Limpiar localStorage
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
@@ -147,18 +149,18 @@ export const authService = {
 
   async validateToken(): Promise<any> {
     const token = localStorage.getItem('access_token');
-    
+
     if (!token) {
       throw new Error('No hay token');
     }
-    
+
     try {
       const response = await api.post('/validate', null, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-      
+
       return response.data;
     } catch (error) {
       // Si falla la validación, limpiar el token

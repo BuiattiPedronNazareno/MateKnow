@@ -8,6 +8,8 @@ import { EvaluacionModule } from './evaluacion/evaluacion.module';
 import { AnuncioModule } from './anuncio/anuncio.module';
 import { EjercicioModule } from './ejercicio/ejercicio.module';
 import { ProgrammingModule } from './ejercicio-programming/programming.module';
+import { VersusModule } from './versus/versus.module';
+import { NotificacionModule } from './notificacion/notificacion.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { ProgrammingModule } from './ejercicio-programming/programming.module';
     AnuncioModule,
     EjercicioModule,
     ProgrammingModule,
+    VersusModule,
+    NotificacionModule,
   ],
   controllers: [],
   providers: [],

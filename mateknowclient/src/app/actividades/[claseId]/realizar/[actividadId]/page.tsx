@@ -8,9 +8,9 @@ import {
   TextField, Alert, Card, CardContent, Divider, Chip, useTheme,
   Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
-import { 
-  Timer, CheckCircle, NavigateNext, NavigateBefore, Coffee, 
-  Cancel, Check, ArrowBack, Visibility, Quiz
+import {
+  Timer, CheckCircle, NavigateNext, NavigateBefore, Coffee,
+  Cancel, Check, ArrowBack, Visibility, Quiz, Whatshot
 } from '@mui/icons-material';
 import { actividadService, Intento } from '@/app/services/actividadService';
 import { MathJax, MathJaxContext } from "better-react-mathjax";
@@ -26,7 +26,7 @@ const ExamTimer = ({ fechaFin, onExpire }: { fechaFin: string, onExpire: () => v
     const interval = setInterval(() => {
       const now = new Date().getTime();
       const end = new Date(fechaFin).getTime();
-      
+
       if (isNaN(end)) {
         clearInterval(interval);
         return;
@@ -43,7 +43,7 @@ const ExamTimer = ({ fechaFin, onExpire }: { fechaFin: string, onExpire: () => v
         const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((distance % (1000 * 60)) / 1000);
         setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
-        if (distance < 1000 * 60 * 5) setUrgent(true); 
+        if (distance < 1000 * 60 * 5) setUrgent(true);
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -52,11 +52,11 @@ const ExamTimer = ({ fechaFin, onExpire }: { fechaFin: string, onExpire: () => v
   if (!fechaFin) return null;
 
   return (
-    <Paper 
-      elevation={0} 
-      sx={{ 
-        display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, 
-        bgcolor: urgent ? '#ffebee' : 'rgba(255,255,255,0.2)', 
+    <Paper
+      elevation={0}
+      sx={{
+        display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1,
+        bgcolor: urgent ? '#ffebee' : 'rgba(255,255,255,0.2)',
         color: urgent ? 'error.main' : '#FFF',
         borderRadius: 2,
         border: urgent ? '1px solid red' : '1px solid rgba(255,255,255,0.3)'
@@ -70,11 +70,57 @@ const ExamTimer = ({ fechaFin, onExpire }: { fechaFin: string, onExpire: () => v
   );
 };
 
+// Componente Cronómetro (Tiempo transcurrido)
+const ElapsedTimer = ({ startTime }: { startTime: string }) => {
+  const [elapsed, setElapsed] = useState('');
+
+  useEffect(() => {
+    if (!startTime) return;
+
+    const interval = setInterval(() => {
+      const start = new Date(startTime).getTime();
+      const now = new Date().getTime();
+
+      if (isNaN(start)) return;
+
+      const diff = now - start;
+      const secondsTotal = Math.floor(diff / 1000);
+
+      const hours = Math.floor(secondsTotal / 3600);
+      const minutes = Math.floor((secondsTotal % 3600) / 60);
+      const seconds = secondsTotal % 60;
+
+      const pad = (n: number) => n.toString().padStart(2, '0');
+      setElapsed(`${pad(hours)}:${pad(minutes)}:${pad(seconds)}`);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1,
+        bgcolor: 'rgba(255,255,255,0.2)',
+        color: '#FFF',
+        borderRadius: 2,
+        border: '1px solid rgba(255,255,255,0.3)'
+      }}
+    >
+      <Timer fontSize="small" />
+      <Typography variant="h6" sx={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '1.1rem' }}>
+        {elapsed}
+      </Typography>
+    </Paper>
+  );
+};
+
 export default function RealizarActividadPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
-  
+
   const initialized = useRef(false);
 
   const rawClaseId = params?.claseId;
@@ -90,17 +136,18 @@ export default function RealizarActividadPage() {
   const [actividad, setActividad] = useState<any>(null);
   const [intento, setIntento] = useState<Intento | null>(null);
   const [ejercicios, setEjercicios] = useState<any[]>([]);
-  const [respuestasLocales, setRespuestasLocales] = useState<{[key: string]: any}>({});
-  
+  const [respuestasLocales, setRespuestasLocales] = useState<{ [key: string]: any }>({});
+
   // Estados de flujo
   const [activeStep, setActiveStep] = useState(0);
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [finished, setFinished] = useState(false);
   const [score, setScore] = useState<number | null>(null);
+  const [streak, setStreak] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [openFinishDialog, setOpenFinishDialog] = useState(false);
-  
+
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // CONFIGURACIÓN DE MATHJAX
@@ -117,10 +164,10 @@ export default function RealizarActividadPage() {
   useEffect(() => {
     // Evitar que corra si no hay IDs o si ya se inicializó
     if (!claseId || !actividadId || initialized.current) return;
-    
+
     // Marcar como inicializado inmediatamente
     initialized.current = true;
-    
+
     initEvaluation();
     
     // ⭐ NUEVO: Restaurar el step después de cargar
@@ -139,6 +186,7 @@ export default function RealizarActividadPage() {
     }, [actividadId, claseId, isReviewModeParam, intentoIdParam]);
 
 
+
   const initEvaluation = async () => {
     try {
       setLoading(true);
@@ -146,13 +194,13 @@ export default function RealizarActividadPage() {
 
       // 1. MODO REVISIÓN (Historial o URL directa)
       if (isReviewModeParam) {
-         await cargarModoRevision(intentoIdParam || undefined);
-         return;
+        await cargarModoRevision(intentoIdParam || undefined);
+        return;
       }
 
       // 2. MODO REALIZAR: Intentar iniciar o retomar intento
       const intentoRes = await actividadService.iniciarIntento(claseId, actividadId);
-      
+
       if (intentoRes.intento.estado === 'finished') {
         // Si el backend dice que ya terminó (ej. evaluación única), forzamos revisión
         await cargarModoRevision();
@@ -163,7 +211,7 @@ export default function RealizarActividadPage() {
         setActividad(detalleRes.actividad);
         setEjercicios(detalleRes.actividad.ejercicios || []);
         setIntento(intentoRes.intento);
-        
+
         // Cargar respuestas previas si existen
         const map: any = {};
         (intentoRes.intento.respuestas || []).forEach((r: any) => { 
@@ -207,7 +255,7 @@ export default function RealizarActividadPage() {
     setIsReviewMode(true);
     // Pasamos targetIntentoId al servicio para obtener ese intento específico
     const revisionRes = await actividadService.getRevision(claseId, actividadId, targetIntentoId);
-    
+
     setActividad(revisionRes.actividad);
     setEjercicios(revisionRes.actividad.ejercicios || []);
     setIntento(revisionRes.intento);
@@ -226,7 +274,7 @@ export default function RealizarActividadPage() {
     setSaving(true);
 
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    
+
     timeoutRef.current = setTimeout(async () => {
       if (intento) {
         try {
@@ -251,18 +299,28 @@ export default function RealizarActividadPage() {
 
     try {
       setLoading(true);
-      
+
       // Enviar respuestas finales
       const respuestasArray = Object.entries(respuestasLocales).map(([k, v]) => ({
         ejercicioId: k,
         respuesta: v
       }));
 
-      const payload = { respuestas: respuestasArray };
+      // Calcular tiempo transcurrido
+      const start = intento.started_at ? new Date(intento.started_at).getTime() : Date.now();
+      const duration = Math.floor((Date.now() - start) / 1000);
+
+      const payload = {
+        respuestas: respuestasArray,
+        tiempoSegundos: duration
+      };
       const res = await actividadService.finalizarIntento(claseId, intento.id, payload);
 
       // Actualizar estado local para mostrar éxito sin recargar
       setScore(res.puntaje);
+      if (res.resultado && res.resultado.racha_maxima) {
+        setStreak(res.resultado.racha_maxima);
+      }
       setFinished(true);
 
     } catch (err: any) {
@@ -276,31 +334,39 @@ export default function RealizarActividadPage() {
   const handleTimeExpire = () => {
     setOpenFinishDialog(false);
     alert("¡Tiempo terminado! Entregando el mate...");
-    
+
     if (intento) {
-        setLoading(true);
-        actividadService.finalizarIntento(claseId, intento.id)
-            .then(res => {
-                setScore(res.puntaje);
-                setFinished(true);
-            })
-            .catch(err => {
-                alert(err.response?.data?.message || 'Error al finalizar por tiempo');
-            })
-            .finally(() => setLoading(false));
+      setLoading(true);
+
+      // Calcular tiempo transcurrido
+      const start = intento.started_at ? new Date(intento.started_at).getTime() : Date.now();
+      const duration = Math.floor((Date.now() - start) / 1000);
+
+      actividadService.finalizarIntento(claseId, intento.id, { tiempoSegundos: duration })
+        .then(res => {
+          setScore(res.puntaje);
+          if (res.resultado && res.resultado.racha_maxima) {
+            setStreak(res.resultado.racha_maxima);
+          }
+          setFinished(true);
+        })
+        .catch(err => {
+          alert(err.response?.data?.message || 'Error al finalizar por tiempo');
+        })
+        .finally(() => setLoading(false));
     }
   };
 
   const handleGoToReview = async () => {
     setLoading(true);
     try {
-        // Al ir a revisión desde la pantalla de éxito, cargamos el último intento (el recién hecho)
-        await cargarModoRevision();
-        setFinished(false); // Quitamos pantalla de éxito para mostrar la revisión
+      // Al ir a revisión desde la pantalla de éxito, cargamos el último intento (el recién hecho)
+      await cargarModoRevision();
+      setFinished(false); // Quitamos pantalla de éxito para mostrar la revisión
     } catch (error) {
-        console.error(error);
+      console.error(error);
     } finally {
-        setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -351,7 +417,7 @@ export default function RealizarActividadPage() {
             <Typography color="text.secondary" paragraph>
               Tus respuestas quedaron guardadas correctamente.
             </Typography>
-            
+
             <Box sx={{ my: 4, p: 3, bgcolor: '#FFF8E1', borderRadius: 2, border: '2px dashed #D2691E' }}>
               <Typography variant="subtitle1" sx={{ color: '#8B4513', fontWeight: 600 }} gutterBottom>
                 TU CALIFICACIÓN
@@ -360,20 +426,33 @@ export default function RealizarActividadPage() {
                 {score} / {totalPuntos}
               </Typography>
               <Typography variant="caption" sx={{ color: '#5D4037' }}>Puntos obtenidos</Typography>
+
+              {/* RACHA MÁXIMA */}
+              {streak > 0 && (
+                <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#D32F2F' }}>
+                    <Whatshot sx={{ fontSize: 32 }} />
+                    <Typography variant="h5" fontWeight="bold">{streak}</Typography>
+                  </Box>
+                  <Typography variant="caption" sx={{ color: '#D32F2F', fontWeight: 'bold' }}>
+                    ¡Mejor Racha de Respuestas!
+                  </Typography>
+                </Box>
+              )}
             </Box>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 startIcon={<Visibility />}
-                onClick={handleGoToReview} 
+                onClick={handleGoToReview}
                 size="large"
                 sx={{ bgcolor: '#D2691E', '&:hover': { bgcolor: '#E65100' } }}
               >
                 Revisar Respuestas
               </Button>
-              <Button 
-                variant="outlined" 
+              <Button
+                variant="outlined"
                 onClick={() => router.push(`/clases/${claseId}`)}
                 sx={{ color: '#8B4513', borderColor: '#8B4513' }}
               >
@@ -391,7 +470,7 @@ export default function RealizarActividadPage() {
   // --------------------------------------------------------------------------
   if (isReviewMode) {
     const totalPuntos = ejercicios.reduce((acc, e) => acc + (Number(e.puntos) || 0), 0);
-    
+
     return (
       <MathJaxContext version={3} config={mathjaxConfig}>
         <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pb: 8 }}>
@@ -399,16 +478,16 @@ export default function RealizarActividadPage() {
           <Box sx={{ bgcolor: '#3E2723', color: 'white', py: 3, px: 2, textAlign: 'center', mb: 4, boxShadow: 3 }}>
             <Typography variant="h5" fontWeight="bold">Revisión de Examen</Typography>
             <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>{actividad?.nombre}</Typography>
-            
+
             {intento && (
-               <Typography variant="caption" sx={{ display: 'block', mt: 1, opacity: 0.8 }}>
-                 Realizado el: {new Date((intento as any).created_at || intento.started_at).toLocaleString()}
-               </Typography>
+              <Typography variant="caption" sx={{ display: 'block', mt: 1, opacity: 0.8 }}>
+                Realizado el: {new Date((intento as any).created_at || intento.started_at).toLocaleString()}
+              </Typography>
             )}
 
-            <Chip 
-              label={`Calificación: ${score} / ${totalPuntos}`} 
-              sx={{ mt: 2, bgcolor: '#FFF', color: '#3E2723', fontWeight: 'bold', fontSize: '1.1rem', py: 2 }} 
+            <Chip
+              label={`Calificación: ${score} / ${totalPuntos}`}
+              sx={{ mt: 2, bgcolor: '#FFF', color: '#3E2723', fontWeight: 'bold', fontSize: '1.1rem', py: 2 }}
             />
           </Box>
 
@@ -418,11 +497,11 @@ export default function RealizarActividadPage() {
             </Button>
 
             {ejercicios.map((ej, idx) => {
-              const respObjeto = intento?.respuestas?.find((r: any) => 
+              const respObjeto = intento?.respuestas?.find((r: any) =>
                 String(r.ejercicioId).trim() === String(ej.id).trim()
               );
-              const respuestaUsuario = respObjeto?.respuesta; 
-              
+              const respuestaUsuario = respObjeto?.respuesta;
+
               let esCorrecto = false;
               let puntosObtenidos = 0;
               let fueCorregido = !!respObjeto?.corregido;
@@ -432,13 +511,13 @@ export default function RealizarActividadPage() {
 
               // 2. LÓGICA DE CORRECCIÓN
               if (isTipoAbierta) {
-                 if (fueCorregido && respObjeto.puntajeManual !== undefined) {
-                   puntosObtenidos = Number(respObjeto.puntajeManual);
-                   esCorrecto = puntosObtenidos > 0;
-                 } else {
-                   puntosObtenidos = 0;
-                   esCorrecto = false; 
-                 }
+                if (fueCorregido && respObjeto.puntajeManual !== undefined) {
+                  puntosObtenidos = Number(respObjeto.puntajeManual);
+                  esCorrecto = puntosObtenidos > 0;
+                } else {
+                  puntosObtenidos = 0;
+                  esCorrecto = false;
+                }
               } else {
                 // LÓGICA AUTOMÁTICA
                 const opcionCorrecta = ej.opciones?.find((o: any) => o.is_correcta);
@@ -454,7 +533,7 @@ export default function RealizarActividadPage() {
               // Determinar color del borde
               let borderColor = esCorrecto ? '6px solid #2E7D32' : '6px solid #D32F2F';
               if (isTipoAbierta && !fueCorregido) {
-                  borderColor = '6px solid #ED6C02'; 
+                borderColor = '6px solid #ED6C02';
               }
 
               return (
@@ -462,17 +541,17 @@ export default function RealizarActividadPage() {
                   <CardContent sx={{ p: 3 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                       <Typography variant="subtitle2" color="text.secondary">Pregunta {idx + 1}</Typography>
-                      
-                      <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="subtitle2" fontWeight="bold" color={esCorrecto ? 'success.main' : (isTipoAbierta && !fueCorregido ? 'warning.main' : 'error.main')}>
-                              {puntosObtenidos} / {ej.puntos} puntos
-                          </Typography>
 
-                          {fueCorregido && (
-                              <Typography variant="caption" display="block" sx={{ color: '#1976D2', fontWeight: 'bold', mt: 0.5 }}>
-                                  Corregido
-                              </Typography>
-                          )}
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="subtitle2" fontWeight="bold" color={esCorrecto ? 'success.main' : (isTipoAbierta && !fueCorregido ? 'warning.main' : 'error.main')}>
+                          {puntosObtenidos} / {ej.puntos} puntos
+                        </Typography>
+
+                        {fueCorregido && (
+                          <Typography variant="caption" display="block" sx={{ color: '#1976D2', fontWeight: 'bold', mt: 0.5 }}>
+                            Corregido
+                          </Typography>
+                        )}
                       </Box>
                     </Box>
 
@@ -487,29 +566,29 @@ export default function RealizarActividadPage() {
                         {ej.opciones.map((op: any) => {
                           const opId = String(op.id).trim();
                           const userResId = String(respuestaUsuario || '').trim();
-                          
+
                           const isSelected = userResId === opId;
                           const isCorrect = op.is_correcta;
-                          
+
                           let bgcolor = '#FAFAFA';
                           let borderColorOp = '#e0e0e0';
                           let icon = <Radio disabled checked={isSelected} />;
-                          
+
                           if (isCorrect) {
-                            bgcolor = '#E8F5E9'; 
+                            bgcolor = '#E8F5E9';
                             borderColorOp = '#2E7D32';
                             icon = isSelected ? <CheckCircle color="success" /> : <Check color="success" />;
                           } else if (isSelected && !isCorrect) {
-                            bgcolor = '#FFEBEE'; 
+                            bgcolor = '#FFEBEE';
                             borderColorOp = '#D32F2F';
                             icon = <Cancel color="error" />;
                           }
 
                           return (
-                            <Paper 
-                              key={op.id} 
-                              variant="outlined" 
-                              sx={{ 
+                            <Paper
+                              key={op.id}
+                              variant="outlined"
+                              sx={{
                                 display: 'flex', alignItems: 'center', p: 1.5, mb: 1,
                                 bgcolor, borderColor: borderColorOp, borderWidth: (isSelected || isCorrect) ? 2 : 1
                               }}
@@ -519,7 +598,7 @@ export default function RealizarActividadPage() {
                               <Typography sx={{ flex: 1, fontWeight: isCorrect ? 600 : 400 }} component="div">
                                 <MathJax inline>{op.texto}</MathJax>
                               </Typography>
-                              
+
                               {isCorrect && <Typography variant="caption" color="success.main" sx={{ fontWeight: 'bold', ml: 1 }}>Correcta</Typography>}
                               {isSelected && !isCorrect && <Typography variant="caption" color="error.main" sx={{ fontWeight: 'bold', ml: 1 }}>Tu respuesta</Typography>}
                             </Paper>
@@ -552,11 +631,11 @@ export default function RealizarActividadPage() {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pt: 8, px: 2 }}>
         <Container maxWidth="sm">
-          <Paper 
-            sx={{ 
-              p: 5, 
-              textAlign: 'center', 
-              borderRadius: 4, 
+          <Paper
+            sx={{
+              p: 5,
+              textAlign: 'center',
+              borderRadius: 4,
               bgcolor: '#FFF',
               boxShadow: '0 8px 32px rgba(139,69,19,0.15)',
               border: '1px dashed #D2691E'
@@ -567,19 +646,19 @@ export default function RealizarActividadPage() {
               Aún no hay ejercicios
             </Typography>
             <Typography color="text.secondary" paragraph sx={{ mb: 4, lineHeight: 1.6 }}>
-              Parece que el profesor está preparando el material para esta actividad.<br/>
+              Parece que el profesor está preparando el material para esta actividad.<br />
               Tomate unos mates 🧉 y vuelve a intentar más tarde.
             </Typography>
-            <Button 
-              variant="contained" 
-              onClick={() => router.back()} 
+            <Button
+              variant="contained"
+              onClick={() => router.back()}
               size="large"
               startIcon={<ArrowBack />}
-              sx={{ 
-                bgcolor: '#8B4513', 
+              sx={{
+                bgcolor: '#8B4513',
                 borderRadius: 2,
                 px: 4,
-                '&:hover': { bgcolor: '#654321' } 
+                '&:hover': { bgcolor: '#654321' }
               }}
             >
               Volver a la clase
@@ -623,9 +702,9 @@ export default function RealizarActividadPage() {
   return (
     <MathJaxContext version={3} config={mathjaxConfig}>
       <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pb: 8 }}>
-        <Box sx={{ 
-          position: 'sticky', top: 0, zIndex: 1100, 
-          background: 'linear-gradient(90deg, #8B4513 0%, #654321 100%)', 
+        <Box sx={{
+          position: 'sticky', top: 0, zIndex: 1100,
+          background: 'linear-gradient(90deg, #8B4513 0%, #654321 100%)',
           color: 'white', px: 3, py: 2,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
@@ -636,7 +715,13 @@ export default function RealizarActividadPage() {
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {saving && <CircularProgress size={20} sx={{ color: '#F5DEB3' }} />}
-            
+
+            {/* Cronómetro de tiempo transcurrido (Solo si NO es evaluación con tiempo límite) */}
+            {intento && intento.started_at && !(actividad.tipo === 'evaluacion' && actividad.fecha_fin) && (
+              <ElapsedTimer startTime={intento.started_at} />
+            )}
+
+            {/* Cuenta regresiva si hay fecha límite */}
             {actividad.tipo === 'evaluacion' && actividad.fecha_fin && (
               <ExamTimer fechaFin={actividad.fecha_fin} onExpire={handleTimeExpire} />
             )}
@@ -644,25 +729,25 @@ export default function RealizarActividadPage() {
         </Box>
 
         <Container maxWidth="md" sx={{ mt: 5 }}>
-          <LinearProgress 
-            variant="determinate" 
-            value={progress} 
-            sx={{ height: 10, borderRadius: 5, mb: 4, bgcolor: 'rgba(139,69,19,0.2)', '& .MuiLinearProgress-bar': { bgcolor: '#D2691E' } }} 
+          <LinearProgress
+            variant="determinate"
+            value={progress}
+            sx={{ height: 10, borderRadius: 5, mb: 4, bgcolor: 'rgba(139,69,19,0.2)', '& .MuiLinearProgress-bar': { bgcolor: '#D2691E' } }}
           />
 
           <Card sx={{ minHeight: 450, display: 'flex', flexDirection: 'column', p: 2, boxShadow: '0 8px 24px rgba(62,39,35,0.15)', borderRadius: 3 }}>
             <CardContent sx={{ flex: 1, p: 3 }}>
               {/* Cabecera del Ejercicio */}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-                 <Chip label={`Ejercicio ${activeStep + 1}`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }} />
-                 <Chip label={`${currentEjercicio.puntos} pts`} variant="outlined" sx={{ borderColor: '#D2691E', color: '#D2691E', fontWeight: 600 }} />
+                <Chip label={`Ejercicio ${activeStep + 1}`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }} />
+                <Chip label={`${currentEjercicio.puntos} pts`} variant="outlined" sx={{ borderColor: '#D2691E', color: '#D2691E', fontWeight: 600 }} />
               </Box>
-              
+
               {/* ENUNCIADO CON SOPORTE LATEX */}
               <Typography variant="h5" gutterBottom sx={{ mb: 4, fontWeight: 500, color: '#3E2723' }} component="div">
                 <MathJax dynamic>{currentEjercicio.enunciado}</MathJax>
               </Typography>
-              
+
               <Divider sx={{ mb: 4, borderColor: 'rgba(139,69,19,0.1)' }} />
 
               <Box>
@@ -676,25 +761,25 @@ export default function RealizarActividadPage() {
                       {(currentEjercicio.opciones || []).map((op: any) => {
                         const isSelected = respuestasLocales[currentEjercicio.id] === op.id;
                         return (
-                          <Paper 
-                            key={op.id} 
-                            variant="outlined" 
-                            component={Button} 
+                          <Paper
+                            key={op.id}
+                            variant="outlined"
+                            component={Button}
                             onClick={() => handleAnswerChange(currentEjercicio.id, op.id)}
-                            sx={{ 
-                               mb: 2, p: 1.5, px: 2, borderRadius: 2, textAlign: 'left', textTransform: 'none', display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
-                               borderColor: isSelected ? '#D2691E' : '#e0e0e0', borderWidth: isSelected ? 2 : 1,
-                               bgcolor: isSelected ? '#FFF3E0' : '#FAFAFA', color: isSelected ? '#D2691E' : '#5D4037',
-                               '&:hover': { bgcolor: isSelected ? '#FFE0B2' : '#F5F5F5', borderColor: '#D2691E' }
+                            sx={{
+                              mb: 2, p: 1.5, px: 2, borderRadius: 2, textAlign: 'left', textTransform: 'none', display: 'flex', alignItems: 'center', justifyContent: 'flex-start',
+                              borderColor: isSelected ? '#D2691E' : '#e0e0e0', borderWidth: isSelected ? 2 : 1,
+                              bgcolor: isSelected ? '#FFF3E0' : '#FAFAFA', color: isSelected ? '#D2691E' : '#5D4037',
+                              '&:hover': { bgcolor: isSelected ? '#FFE0B2' : '#F5F5F5', borderColor: '#D2691E' }
                             }}
                           >
                             <Radio checked={isSelected} sx={{ color: '#8B4513', '&.Mui-checked': { color: '#D2691E' }, mr: 2 }} />
-                            
+
                             {/* TEXTO DE LA OPCIÓN CON SOPORTE LATEX */}
                             <Box sx={{ width: '100%' }}>
-                               <Typography variant="body1" fontWeight={isSelected ? 600 : 400} component="div">
-                                  <MathJax inline dynamic>{op.texto}</MathJax>
-                               </Typography>
+                              <Typography variant="body1" fontWeight={isSelected ? 600 : 400} component="div">
+                                <MathJax inline dynamic>{op.texto}</MathJax>
+                              </Typography>
                             </Box>
 
                           </Paper>

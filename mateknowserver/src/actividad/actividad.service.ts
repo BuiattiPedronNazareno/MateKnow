@@ -11,12 +11,16 @@ import { CreateActividadDto } from './dto/create-actividad.dto';
 import { UpdateActividadDto } from './dto/update-actividad.dto';
 import { RespuestaParcialDto } from './dto/respuesta-parcial.dto';
 import { FinalizarIntentoDto } from './dto/finalizar-intento.dto';
+import { RankingGateway } from './ranking.gateway';
 
 @Injectable()
 export class ActividadService {
   private readonly logger = new Logger(ActividadService.name);
 
-  constructor(private supabaseService: SupabaseService) {}
+  constructor(
+    private supabaseService: SupabaseService,
+    private rankingGateway: RankingGateway
+  ) { }
 
   // --- HELPERS ---
 
@@ -94,7 +98,7 @@ export class ActividadService {
             if (keyCandidate === 'verdadero-falso') keysToTry.push('true_false');
             if (keyCandidate === 'multiple-choice') keysToTry.push('choice', 'multiple_choice');
             if (keyCandidate === 'abierta') keysToTry.push('abierta');
-            
+
             const { data: tipoRows } = await supabase
               .from('tipo_ejercicio')
               .select('id')
@@ -105,11 +109,11 @@ export class ActividadService {
             }
           }
 
-          const payload: any = { 
-            enunciado: (e as any).enunciado || (e as any).titulo || '', 
-            puntos: (e as any).puntos ?? 1, 
-            metadata: Object.keys(metadataObj).length ? metadataObj : null, 
-            creado_por: userId 
+          const payload: any = {
+            enunciado: (e as any).enunciado || (e as any).titulo || '',
+            puntos: (e as any).puntos ?? 1,
+            metadata: Object.keys(metadataObj).length ? metadataObj : null,
+            creado_por: userId
           };
           if (tipoIdForEjercicio) payload.tipo_id = tipoIdForEjercicio;
 
@@ -183,21 +187,46 @@ export class ActividadService {
     if (actividadIds.length > 0) {
       const { data: intentos } = await supabase
         .from('actividad_resultado')
-        .select('actividad_id, estado, puntaje')
+        .select('actividad_id, estado, puntaje, racha_maxima, tiempo_segundos')
         .in('actividad_id', actividadIds)
         .eq('usuario_id', userId);
 
       (intentos || []).forEach((i: any) => {
-        // Si hay múltiples (no debería), priorizamos el 'finished'
-        if (!intentosMap[i.actividad_id] || i.estado === 'finished') {
-            intentosMap[i.actividad_id] = i;
+        if (!intentosMap[i.actividad_id]) {
+          intentosMap[i.actividad_id] = {
+            ...i,
+            bestStreak: i.racha_maxima || 0,
+            bestTime: i.tiempo_segundos || null
+          };
+        } else {
+          // Si ya existe, actualizamos con la mejor estadística
+          const current = intentosMap[i.actividad_id];
+
+          // Mejor Racha
+          if ((i.racha_maxima || 0) > current.bestStreak) {
+            current.bestStreak = i.racha_maxima;
+          }
+
+          // Mejor Tiempo (Menor es mejor, solo si finalizó)
+          if (i.estado === 'finished' && i.tiempo_segundos) {
+            if (!current.bestTime || i.tiempo_segundos < current.bestTime) {
+              current.bestTime = i.tiempo_segundos;
+            }
+          }
+
+          // Mantener el estado más relevante (si alguno está finished, nos quedamos con ese o el último)
+          // Simplificación: si el nuevo es finished, sobreescribimos estado/puntaje base
+          if (i.estado === 'finished') {
+            current.estado = i.estado;
+            current.puntaje = i.puntaje;
+          }
         }
       });
     }
 
     const actividadesConEstado = actividades.map(a => ({
-        ...a,
-        intento: intentosMap[a.id] || null // Agregamos el intento a la actividad
+      ...a,
+      intento: intentosMap[a.id] || null // Agregamos el intento a la actividad
     }));
 
     // Cargar ejercicios básicos para mostrar en detalle si es necesario
@@ -241,7 +270,7 @@ export class ActividadService {
         .delete()
         .eq('id', actividadId)
         .eq('clase_id', claseId);
-      
+
       if (error) throw new BadRequestException('Error al eliminar actividad: ' + error.message);
 
       // 5. BORRAR LOS EJERCICIOS HUÉRFANOS
@@ -284,34 +313,34 @@ export class ActividadService {
       const createdEjercicioIds: string[] = [];
       if (dto.nuevosEjercicios && dto.nuevosEjercicios.length > 0) {
         for (const e of dto.nuevosEjercicios) {
-           const metadataObj: any = {};
-           if (e.titulo) metadataObj.title = e.titulo;
-           
-           // Mapeo de tipos (simplificado)
-           let tipoId = null;
-           if (e.tipo) {
-             const { data } = await supabase.from('tipo_ejercicio').select('id').eq('key', e.tipo).single();
-             if (!data && (e.tipo === 'multiple-choice')) { /* fallback logic */ }
-             if (data) tipoId = data.id;
-           }
-           
-           const payload: any = { 
-             enunciado: e.enunciado || e.titulo || '', 
-             puntos: e.puntos ?? 1, 
-             metadata: metadataObj, 
-             creado_por: userId,
-             tipo_id: tipoId 
-           };
-           
-           const { data: ej } = await supabase.from('ejercicio').insert(payload).select().single();
-           if (ej) {
-             createdEjercicioIds.push(ej.id);
-             // Insertar opciones si hay
-             if (e.opciones?.length) {
-               const opts = e.opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: o.is_correcta }));
-               await supabase.from('opcion_ejercicio').insert(opts);
-             }
-           }
+          const metadataObj: any = {};
+          if (e.titulo) metadataObj.title = e.titulo;
+
+          // Mapeo de tipos (simplificado)
+          let tipoId = null;
+          if (e.tipo) {
+            const { data } = await supabase.from('tipo_ejercicio').select('id').eq('key', e.tipo).single();
+            if (!data && (e.tipo === 'multiple-choice')) { /* fallback logic */ }
+            if (data) tipoId = data.id;
+          }
+
+          const payload: any = {
+            enunciado: e.enunciado || e.titulo || '',
+            puntos: e.puntos ?? 1,
+            metadata: metadataObj,
+            creado_por: userId,
+            tipo_id: tipoId
+          };
+
+          const { data: ej } = await supabase.from('ejercicio').insert(payload).select().single();
+          if (ej) {
+            createdEjercicioIds.push(ej.id);
+            // Insertar opciones si hay
+            if (e.opciones?.length) {
+              const opts = e.opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: o.is_correcta }));
+              await supabase.from('opcion_ejercicio').insert(opts);
+            }
+          }
         }
       }
 
@@ -331,11 +360,11 @@ export class ActividadService {
           const { error } = await supabase.from('actividad_ejercicio').insert(rows);
           if (error) throw new BadRequestException('Error al actualizar ejercicios: ' + error.message);
         }
-      } 
+      }
       // Caso: Solo agregar nuevos (append) sin tocar los existentes
       else if (createdEjercicioIds.length > 0) {
-         const rows = createdEjercicioIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
-         await supabase.from('actividad_ejercicio').insert(rows);
+        const rows = createdEjercicioIds.map((eid) => ({ actividad_id: actividadId, ejercicio_id: eid }));
+        await supabase.from('actividad_ejercicio').insert(rows);
       }
 
       return { message: 'Actividad actualizada' };
@@ -349,7 +378,7 @@ export class ActividadService {
     const { data: insc } = await supabase.from('inscripcion').select('id').eq('usuario_id', userId).eq('clase_id', claseId).maybeSingle();
     if (!insc) throw new ForbiddenException('No tienes acceso a esta clase');
     // Implementación placeholder para este método auxiliar
-    return { ejercicios: [] }; 
+    return { ejercicios: [] };
   }
 
   // --- MÉTODOS PARA EL ALUMNO (EVALUACIÓN) ---
@@ -359,6 +388,12 @@ export class ActividadService {
    * Lógica robusta para detectar tipos de ejercicio
    */
   async getActividadById(actividadId: string, userId: string, accessToken?: string) {
+    // Validar que sea un UUID válido para evitar errores de base de datos
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(actividadId)) {
+      throw new NotFoundException('Actividad no encontrada (ID inválido)');
+    }
+
     const supabase = this.supabaseService.getClient(accessToken);
 
     const { data, error } = await supabase
@@ -400,39 +435,39 @@ export class ActividadService {
     const ejercicios = (actividad.actividad_ejercicio || [])
       .sort((a: any, b: any) => a.orden - b.orden)
       .map((ae: any) => {
-         const ej = ae.ejercicio;
-         if (!ej) return null;
+        const ej = ae.ejercicio;
+        if (!ej) return null;
 
-         let tipoKey = 'desconocido';
-         const te = ej.tipo_ejercicio;
-         
-         if (te) {
-           if (Array.isArray(te) && te.length > 0) tipoKey = te[0].key;
-           else if (te.key) tipoKey = te.key;
-         }
+        let tipoKey = 'desconocido';
+        const te = ej.tipo_ejercicio;
 
-         if ((tipoKey === 'desconocido' || !tipoKey) && ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
-            tipoKey = 'multiple-choice';
-         }
-         if ((tipoKey === 'desconocido' || !tipoKey) && (!ej.opcion_ejercicio || ej.opcion_ejercicio.length === 0)) {
-            tipoKey = 'abierta';
-         }
+        if (te) {
+          if (Array.isArray(te) && te.length > 0) tipoKey = te[0].key;
+          else if (te.key) tipoKey = te.key;
+        }
 
-         // LÓGICA DE SEGURIDAD:
-         // Si NO es profesor, eliminamos el campo 'is_correcta' de las opciones
-         const opciones = (ej.opcion_ejercicio || []).map((op: any) => {
-            if (!isProfesor) {
-                const { is_correcta, ...resto } = op;
-                return resto;
-            }
-            return op;
-         });
+        if ((tipoKey === 'desconocido' || !tipoKey) && ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
+          tipoKey = 'multiple-choice';
+        }
+        if ((tipoKey === 'desconocido' || !tipoKey) && (!ej.opcion_ejercicio || ej.opcion_ejercicio.length === 0)) {
+          tipoKey = 'abierta';
+        }
 
-         return {
-            ...ej,
-            tipo: tipoKey,
-            opciones: opciones
-         };
+        // LÓGICA DE SEGURIDAD:
+        // Si NO es profesor, eliminamos el campo 'is_correcta' de las opciones
+        const opciones = (ej.opcion_ejercicio || []).map((op: any) => {
+          if (!isProfesor) {
+            const { is_correcta, ...resto } = op;
+            return resto;
+          }
+          return op;
+        });
+
+        return {
+          ...ej,
+          tipo: tipoKey,
+          opciones: opciones
+        };
       })
       .filter((e: any) => e !== null);
 
@@ -471,59 +506,59 @@ export class ActividadService {
       .eq('usuario_id', userId)
       .eq('estado', 'in_progress')
       .maybeSingle();
-      
+
     if (enProgreso) {
       return { message: 'Retomando intento', intento: enProgreso };
     }
 
-  // 2. NUEVA LÓGICA ANTI-RACE CONDITION
-  // Antes de insertar, borrar intentos "zombies" creados hace menos de 1 min sin respuestas
-  // Esto limpia la basura generada por el doble request del frontend
-  const haceUnMinuto = new Date(Date.now() - 60 * 1000).toISOString();
-  await supabase
-    .from('actividad_resultado')
-    .delete()
-    .eq('actividad_id', actividadId)
-    .eq('usuario_id', userId)
-    .eq('estado', 'in_progress')
-    .lt('puntaje', 0) // Opcional: filtro de seguridad
-    .gte('created_at', haceUnMinuto);
+    // 2. NUEVA LÓGICA ANTI-RACE CONDITION
+    // Antes de insertar, borrar intentos "zombies" creados hace menos de 1 min sin respuestas
+    // Esto limpia la basura generada por el doble request del frontend
+    const haceUnMinuto = new Date(Date.now() - 60 * 1000).toISOString();
+    await supabase
+      .from('actividad_resultado')
+      .delete()
+      .eq('actividad_id', actividadId)
+      .eq('usuario_id', userId)
+      .eq('estado', 'in_progress')
+      .lt('puntaje', 0) // Opcional: filtro de seguridad
+      .gte('created_at', haceUnMinuto);
 
-  // 3. Insertar Nuevo (Lógica existente)
-  const { data: nuevoIntento, error: createError } = await supabase
-    .from('actividad_resultado')
-    .insert({
-      // ... tus campos
-      actividad_id: actividadId,
-      clase_id: actividad.clase_id,
-      usuario_id: userId,
-      registro_id: `ATT-${Date.now()}`,
-      respuestas: [],
-      estado: 'in_progress',
-      started_at: new Date(),
-    })
-    .select()
-    .single();
+    // 3. Insertar Nuevo (Lógica existente)
+    const { data: nuevoIntento, error: createError } = await supabase
+      .from('actividad_resultado')
+      .insert({
+        // ... tus campos
+        actividad_id: actividadId,
+        clase_id: actividad.clase_id,
+        usuario_id: userId,
+        registro_id: `ATT-${Date.now()}`,
+        respuestas: [],
+        estado: 'in_progress',
+        started_at: new Date(),
+      })
+      .select()
+      .single();
 
-  if (createError) {
-     // Si falla por unique constraint (si tuvieras), intentamos recuperar el que ganó la carrera
-     if (createError.code === '23505') { 
+    if (createError) {
+      // Si falla por unique constraint (si tuvieras), intentamos recuperar el que ganó la carrera
+      if (createError.code === '23505') {
         const { data: retry } = await supabase.from('actividad_resultado').select('*').eq('actividad_id', actividadId).eq('usuario_id', userId).eq('estado', 'in_progress').single();
         return { message: 'Retomando intento (recuperado)', intento: retry };
-     }
-     throw new InternalServerErrorException('Error al iniciar intento: ' + createError.message); 
-  }
+      }
+      throw new InternalServerErrorException('Error al iniciar intento: ' + createError.message);
+    }
 
-  return { message: 'Actividad iniciada', intento: nuevoIntento };
-}
+    return { message: 'Actividad iniciada', intento: nuevoIntento };
+  }
 
   /**
    * CA5: Guardado automático
    */
   async guardarRespuestaParcial(
-    resultadoId: string, 
-    dto: RespuestaParcialDto, 
-    userId: string, 
+    resultadoId: string,
+    dto: RespuestaParcialDto,
+    userId: string,
     accessToken?: string
   ) {
     const supabase = this.supabaseService.getClient(accessToken);
@@ -561,9 +596,9 @@ export class ActividadService {
    * CA4: Finalizar y Calificar
    */
   async finalizarIntento(
-    resultadoId: string, 
-    userId: string, 
-    accessToken?: string, 
+    resultadoId: string,
+    userId: string,
+    accessToken?: string,
     dto?: FinalizarIntentoDto | any
   ) {
     const supabase = this.supabaseService.getClient(accessToken);
@@ -580,20 +615,32 @@ export class ActividadService {
 
     // 1.5. SANITIZACIÓN
     if (respuestasFinales.length > 0 && Array.isArray(respuestasFinales[0])) {
-        respuestasFinales = respuestasFinales.flat();
+      respuestasFinales = respuestasFinales.flat();
     }
-    respuestasFinales = respuestasFinales.filter(r => 
-        r && typeof r === 'object' && !Array.isArray(r) && r.ejercicioId
+
+    // Filtrar basura: aseguramos que solo queden objetos válidos con ejercicioId
+    respuestasFinales = respuestasFinales.filter(r =>
+      r && typeof r === 'object' && !Array.isArray(r) && r.ejercicioId
     );
 
-    // 2. PERSISTENCIA PREVIA
+    // ---------------------------------------------------------
+    // 2. PERSISTENCIA PREVIA (Guardar respuestas limpias)
+    // ---------------------------------------------------------
+    const updatePayload: any = { updated_at: new Date() };
+
     if (respuestasFinales.length > 0) {
+      updatePayload.respuestas = respuestasFinales;
+    }
+
+    if (dto && typeof dto.tiempoSegundos === 'number') {
+      updatePayload.tiempo_segundos = dto.tiempoSegundos;
+    }
+
+    // Solo actualizamos si hay algo más que updated_at
+    if (Object.keys(updatePayload).length > 1) {
       const { error: updateError } = await supabase
         .from('actividad_resultado')
-        .update({ 
-          respuestas: respuestasFinales, 
-          updated_at: new Date() 
-        })
+        .update(updatePayload)
         .eq('id', resultadoId)
         .eq('usuario_id', userId);
 
@@ -611,21 +658,24 @@ export class ActividadService {
       .single();
 
     if (intento && intento.estado === 'finished') {
-        return { 
-            message: 'Evaluación ya finalizada anteriormente', 
-            puntaje: intento.puntaje, 
-            resultado: intento 
-        };
+      return {
+        message: 'Evaluación ya finalizada anteriormente',
+        puntaje: intento.puntaje,
+        resultado: intento
+      };
     }
 
     if (!intento || intento.usuario_id !== userId) {
       throw new BadRequestException('Intento no válido');
     }
 
-    // 4. CALIFICACIÓN - ✅ CON SOPORTE PARA PROGRAMACIÓN
-    const { data: ejercicios } = await supabase
+    // ---------------------------------------------------------
+    // 4. CALIFICACIÓN
+    // ---------------------------------------------------------
+    const { data: ejerciciosRaw } = await supabase
       .from('actividad_ejercicio')
       .select(`
+        orden,
         ejercicio:ejercicio_id (
           id, 
           puntos, 
@@ -636,13 +686,20 @@ export class ActividadService {
       `)
       .eq('actividad_id', intento.actividad_id);
 
+    // Ordenar por orden para calcular racha correctamente
+    const ejercicios = (ejerciciosRaw || []).sort((a: any, b: any) => a.orden - b.orden);
+
     let puntajeTotal = 0;
-    let respuestasUsuario = respuestasFinales.length > 0 
-      ? respuestasFinales 
-      : (intento.respuestas as any[]) || [];
-    
+
+    let currentStreak = 0;
+    let maxStreak = 0;
+
+    // Usamos las respuestas limpias (o las de DB si el payload vino vacío)
+    let respuestasUsuario = respuestasFinales.length > 0 ? respuestasFinales : (intento.respuestas as any[]) || [];
+
+    // Doble check de sanitización por si DB tenía basura vieja
     if (respuestasUsuario.length > 0 && Array.isArray(respuestasUsuario[0])) {
-        respuestasUsuario = respuestasUsuario.flat();
+      respuestasUsuario = respuestasUsuario.flat();
     }
 
     // ✅ LÓGICA DE CALIFICACIÓN MEJORADA
@@ -651,7 +708,11 @@ export class ActividadService {
       if (!ej) return;
 
       const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
+
       if (!respuestaUser) return;
+
+      let isCorrect = false;
+
 
       // ✅ DETECTAR TIPO DE EJERCICIO
       const tipoKey = ej.tipo_ejercicio?.key || ej.tipo_ejercicio?.[0]?.key;
@@ -676,11 +737,22 @@ export class ActividadService {
       // ✅ CASO 2: EJERCICIOS NORMALES (Multiple Choice, True/False, etc.)
       if (ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
         const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
-        
+
         if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
           puntajeTotal += Number(ej.puntos);
+          
           this.logger.log(`✅ Multiple Choice - Ejercicio ${ej.id}: ${ej.puntos} pts`);
+
+          isCorrect = true;
         }
+      }
+
+      // Cálculo de Racha
+      if (isCorrect) {
+        currentStreak++;
+        if (currentStreak > maxStreak) maxStreak = currentStreak;
+      } else {
+        currentStreak = 0;
       }
     });
 
@@ -692,6 +764,7 @@ export class ActividadService {
       .update({
         estado: 'finished',
         puntaje: puntajeTotal,
+        racha_maxima: maxStreak,
         finished_at: new Date(),
         respuestas: respuestasUsuario
       })
@@ -701,10 +774,39 @@ export class ActividadService {
 
     if (error) throw new InternalServerErrorException('Error al finalizar: ' + error.message);
 
-    return { 
-      message: 'Evaluación enviada correctamente', 
-      puntaje: puntajeTotal, 
-      resultado: resultadoFinal 
+    // Emitir evento de ranking
+    try {
+      const { data: userData } = await supabase
+        .from('usuarios')
+        .select('id, nombre, apellido, email, alias')
+        .eq('id', userId)
+        .single();
+
+      // Obtener clase_id de la actividad
+      const { data: actividadData } = await supabase
+        .from('actividad')
+        .select('clase_id')
+        .eq('id', intento.actividad_id)
+        .single();
+
+      if (userData && actividadData) {
+        this.rankingGateway.emitRankingUpdate({
+          type: 'actividad',
+          usuario: userData,
+          puntaje: puntajeTotal,
+          actividadId: intento.actividad_id,
+          claseId: actividadData.clase_id,
+          fecha: new Date(),
+        });
+      }
+    } catch (e) {
+      this.logger.error('Error emitiendo ranking update', e);
+    }
+
+    return {
+      message: 'Evaluación enviada correctamente',
+      puntaje: puntajeTotal,
+      resultado: resultadoFinal
     };
   }
 
@@ -761,16 +863,16 @@ export class ActividadService {
     const ejercicios = (actividad.actividad_ejercicio || [])
       .sort((a: any, b: any) => a.orden - b.orden)
       .map((ae: any) => {
-         const ej = ae.ejercicio;
-         let tipoKey = 'desconocido';
-         if (ej.tipo_ejercicio) {
-             if (Array.isArray(ej.tipo_ejercicio) && ej.tipo_ejercicio.length) tipoKey = ej.tipo_ejercicio[0].key;
-             else if (ej.tipo_ejercicio.key) tipoKey = ej.tipo_ejercicio.key;
-         }
-         if ((tipoKey === 'desconocido' || !tipoKey) && ej.opcion_ejercicio?.length > 0) tipoKey = 'multiple-choice';
-         if ((tipoKey === 'desconocido' || !tipoKey)) tipoKey = 'abierta';
+        const ej = ae.ejercicio;
+        let tipoKey = 'desconocido';
+        if (ej.tipo_ejercicio) {
+          if (Array.isArray(ej.tipo_ejercicio) && ej.tipo_ejercicio.length) tipoKey = ej.tipo_ejercicio[0].key;
+          else if (ej.tipo_ejercicio.key) tipoKey = ej.tipo_ejercicio.key;
+        }
+        if ((tipoKey === 'desconocido' || !tipoKey) && ej.opcion_ejercicio?.length > 0) tipoKey = 'multiple-choice';
+        if ((tipoKey === 'desconocido' || !tipoKey)) tipoKey = 'abierta';
 
-         return { ...ej, tipo: tipoKey, opciones: ej.opcion_ejercicio || [] };
+        return { ...ej, tipo: tipoKey, opciones: ej.opcion_ejercicio || [] };
       });
 
     return { actividad: { ...actividad, ejercicios }, intento };
@@ -816,12 +918,12 @@ export class ActividadService {
 
   // Calificar manualmente una respuesta (Pregunta Abierta)
   async calificarRespuestaManual(
-    claseId: string, 
-    actividadId: string, 
-    intentoId: string, 
-    ejercicioId: string, 
-    puntajeAsignado: number, 
-    userId: string, 
+    claseId: string,
+    actividadId: string,
+    intentoId: string,
+    ejercicioId: string,
+    puntajeAsignado: number,
+    userId: string,
     accessToken?: string
   ) {
     const supabase = this.supabaseService.getClient(accessToken);
@@ -833,30 +935,30 @@ export class ActividadService {
       .select('*')
       .eq('id', intentoId)
       .single();
-      
+
     if (!intento) throw new NotFoundException('Intento no encontrado');
 
     // 2. Modificar la respuesta específica
     const respuestas = intento.respuestas || [];
     const respuestaIndex = respuestas.findIndex((r: any) => r.ejercicioId === ejercicioId);
-    
+
     const now = new Date().toISOString(); // Fecha actual
 
     if (respuestaIndex === -1) {
-       respuestas.push({ 
-         ejercicioId, 
-         respuesta: '', 
-         puntajeManual: puntajeAsignado, 
-         corregido: true,
-         correctedAt: now // Guardamos la fecha
-       });
+      respuestas.push({
+        ejercicioId,
+        respuesta: '',
+        puntajeManual: puntajeAsignado,
+        corregido: true,
+        correctedAt: now // Guardamos la fecha
+      });
     } else {
-       respuestas[respuestaIndex] = {
-         ...respuestas[respuestaIndex],
-         puntajeManual: puntajeAsignado,
-         corregido: true,
-         correctedAt: now // Guardamos la fecha
-       };
+      respuestas[respuestaIndex] = {
+        ...respuestas[respuestaIndex],
+        puntajeManual: puntajeAsignado,
+        corregido: true,
+        correctedAt: now // Guardamos la fecha
+      };
     }
 
     // 3. Recalcular el puntaje TOTAL
@@ -868,26 +970,26 @@ export class ActividadService {
     let nuevoPuntajeTotal = 0;
 
     (ejercicios || []).forEach((ae: any) => {
-       const ej = ae.ejercicio;
-       const respUser = respuestas.find((r: any) => r.ejercicioId === ej.id);
+      const ej = ae.ejercicio;
+      const respUser = respuestas.find((r: any) => r.ejercicioId === ej.id);
 
-       if (respUser) {
-          if (respUser.puntajeManual !== undefined) {
-            nuevoPuntajeTotal += Number(respUser.puntajeManual);
-          } else {
-            const opcionCorrecta = ej.opcion_ejercicio?.find((o:any) => o.is_correcta);
-            if (opcionCorrecta && respUser.respuesta === opcionCorrecta.id) {
-               nuevoPuntajeTotal += Number(ej.puntos);
-            }
+      if (respUser) {
+        if (respUser.puntajeManual !== undefined) {
+          nuevoPuntajeTotal += Number(respUser.puntajeManual);
+        } else {
+          const opcionCorrecta = ej.opcion_ejercicio?.find((o: any) => o.is_correcta);
+          if (opcionCorrecta && respUser.respuesta === opcionCorrecta.id) {
+            nuevoPuntajeTotal += Number(ej.puntos);
           }
-       }
+        }
+      }
     });
 
     // 4. Guardar en Base de Datos
     const { error } = await supabase
       .from('actividad_resultado')
-      .update({ 
-        respuestas: respuestas, 
+      .update({
+        respuestas: respuestas,
         puntaje: nuevoPuntajeTotal,
         updated_at: now
       })
@@ -896,5 +998,159 @@ export class ActividadService {
     if (error) throw new InternalServerErrorException('Error al guardar corrección');
 
     return { message: 'Calificación actualizada', puntaje: nuevoPuntajeTotal };
+  }
+
+  // --- RANKING ---
+
+  async getGlobalRanking(accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    // Traemos todos los resultados finalizados
+    // Nota: En producción esto debería ser una vista o RPC para escalar
+    const { data: resultados, error } = await supabase
+      .from('actividad_resultado')
+      .select(`
+        puntaje,
+        usuario:usuario_id (
+          id, nombre, apellido, email, alias
+        )
+      `)
+      .eq('estado', 'finished');
+
+    if (error) {
+      this.logger.error('Error fetching ranking data', error);
+      throw new InternalServerErrorException('Error al obtener ranking');
+    }
+
+    // Agregación en memoria
+    const rankingMap = new Map<string, { usuario: any; puntaje: number }>();
+
+    resultados.forEach((r: any) => {
+      if (!r.usuario) return;
+
+      const uid = r.usuario.id;
+      const current = rankingMap.get(uid) || { usuario: r.usuario, puntaje: 0 };
+
+      current.puntaje += (Number(r.puntaje) || 0);
+      rankingMap.set(uid, current);
+    });
+
+    // Convertir a array y ordenar
+    const ranking = Array.from(rankingMap.values())
+      .sort((a, b) => b.puntaje - a.puntaje)
+      .slice(0, 10); // Top 10
+
+    return ranking;
+  }
+
+  async getGlobalVersusRanking(accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    const { data: resultadosVersus, error: errorVersus } = await supabase
+      .from('versus_resultado')
+      .select(`
+        puntaje,
+        usuario:usuario_id (
+          id, nombre, apellido, email, alias
+        )
+      `);
+
+    if (errorVersus) {
+      this.logger.error('Error fetching ranking data (versus)', errorVersus);
+      throw new InternalServerErrorException('Error al obtener ranking versus');
+    }
+
+    const rankingMap = new Map<string, { usuario: any; puntaje: number }>();
+
+    resultadosVersus.forEach((r: any) => {
+      if (!r.usuario) return;
+
+      const uid = r.usuario.id;
+      const current = rankingMap.get(uid) || { usuario: r.usuario, puntaje: 0 };
+
+      current.puntaje += (Number(r.puntaje) || 0);
+      rankingMap.set(uid, current);
+    });
+
+    return Array.from(rankingMap.values())
+      .sort((a, b) => b.puntaje - a.puntaje)
+      .slice(0, 10);
+  }
+
+  async getClaseRanking(claseId: string, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    // Traemos resultados finalizados de actividades de la clase
+    const { data: resultados, error } = await supabase
+      .from('actividad_resultado')
+      .select(`
+        puntaje,
+        usuario:usuario_id (
+          id, nombre, apellido, email, alias
+        ),
+        actividad!inner(clase_id)
+      `)
+      .eq('estado', 'finished')
+      .eq('actividad.clase_id', claseId);
+
+    if (error) {
+      this.logger.error('Error fetching class ranking data', error);
+      throw new InternalServerErrorException('Error al obtener ranking de clase');
+    }
+
+    // Agregación en memoria
+    const rankingMap = new Map<string, { usuario: any; puntaje: number }>();
+
+    resultados.forEach((r: any) => {
+      if (!r.usuario) return;
+
+      const uid = r.usuario.id;
+      const current = rankingMap.get(uid) || { usuario: r.usuario, puntaje: 0 };
+
+      current.puntaje += (Number(r.puntaje) || 0);
+      rankingMap.set(uid, current);
+    });
+
+    // Convertir a array y ordenar
+    const ranking = Array.from(rankingMap.values())
+      .sort((a, b) => b.puntaje - a.puntaje)
+      .slice(0, 10); // Top 10
+
+    return ranking;
+  }
+
+  async getClaseVersusRanking(claseId: string, accessToken?: string) {
+    const supabase = this.supabaseService.getClient(accessToken);
+
+    const { data: resultadosVersus, error: errorVersus } = await supabase
+      .from('versus_resultado')
+      .select(`
+        puntaje,
+        usuario:usuario_id (
+          id, nombre, apellido, email, alias
+        )
+      `)
+      .eq('clase_id', claseId);
+
+    if (errorVersus) {
+      this.logger.error('Error fetching class ranking data (versus)', errorVersus);
+      throw new InternalServerErrorException('Error al obtener ranking versus de clase');
+    }
+
+    const rankingMap = new Map<string, { usuario: any; puntaje: number }>();
+
+    resultadosVersus.forEach((r: any) => {
+      if (!r.usuario) return;
+
+      const uid = r.usuario.id;
+      const current = rankingMap.get(uid) || { usuario: r.usuario, puntaje: 0 };
+
+      current.puntaje += (Number(r.puntaje) || 0);
+      rankingMap.set(uid, current);
+    });
+
+    return Array.from(rankingMap.values())
+      .sort((a, b) => b.puntaje - a.puntaje)
+      .slice(0, 10);
   }
 }

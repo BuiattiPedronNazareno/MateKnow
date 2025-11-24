@@ -11,7 +11,7 @@ import { Query } from '@nestjs/common/decorators';
 @Controller('clases/:claseId/actividades')
 @UseGuards(AuthGuard)
 export class ActividadController {
-  constructor(private readonly actividadService: ActividadService) {}
+  constructor(private readonly actividadService: ActividadService) { }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -37,10 +37,22 @@ export class ActividadController {
     return this.actividadService.updateActividad(claseId, id, dto, req.user.id, req.token);
   }
 
-  @Get('/ejercicios')
+  @Get('ejercicios')
   @HttpCode(HttpStatus.OK)
   async getEjercicios(@Param('claseId') claseId: string, @Request() req) {
     return this.actividadService.getEjerciciosDeClase(claseId, req.user.id, req.token);
+  }
+
+  @Get('ranking')
+  @HttpCode(HttpStatus.OK)
+  async getClaseRanking(@Param('claseId') claseId: string, @Request() req) {
+    return this.actividadService.getClaseRanking(claseId, req.token);
+  }
+
+  @Get('ranking/versus')
+  @HttpCode(HttpStatus.OK)
+  async getClaseVersusRanking(@Param('claseId') claseId: string, @Request() req) {
+    return this.actividadService.getClaseVersusRanking(claseId, req.token);
   }
 
   // --- ENDPOINTS DE REALIZACIÓN (ALUMNO) ---
@@ -48,8 +60,8 @@ export class ActividadController {
   @Get(':id/revision')
   @HttpCode(HttpStatus.OK)
   async getRevision(
-    @Param('id') id: string, 
-    @Query('intentoId') intentoId: string, 
+    @Param('id') id: string,
+    @Query('intentoId') intentoId: string,
     @Request() req
   ) {
     return this.actividadService.getRevision(id, req.user.id, req.token, intentoId);
