@@ -8,7 +8,7 @@ export class ProgrammingService {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  private pistonUrl = (process.env.PISTON_URL || 'https://emkc.org/api/v2').replace(/\/$/, '');
+  private pistonUrl = (process.env.PISTON_URL || 'https://emkc.org/api/v2/piston').replace(/\/$/, '');
   private pistonToken = process.env.PISTON_TOKEN;
 
   async createProgrammingExercise(dto: {
@@ -61,26 +61,25 @@ export class ProgrammingService {
   }
 
   async runOnPiston(language: string, version: string | null, code: string, stdin = '') {
-    // ⭐ CORRECCIÓN: Usar /execute en lugar de construir manualmente
     const body: any = {
       language,
-      version: version || '*', // ⭐ Usar '*' para última versión si no se especifica
+      version: version || '*',
       files: [
         { 
-          name: `main.${language === 'python' ? 'py' : language === 'javascript' ? 'js' : 'txt'}`, 
+          name: `main.${language === 'python' ? 'py' : language === 'javascript' ? 'js' : language === 'java' ? 'java' : 'txt'}`, 
           content: code 
         }
       ],
       stdin,
     };
-  
+
     console.log('🔵 Sending to Piston:', {
       url: `${this.pistonUrl}/execute`,
       language,
       version: body.version,
       codeLength: code.length
     });
-  
+
     const res = await fetch(`${this.pistonUrl}/execute`, {
       method: 'POST',
       headers: {
@@ -89,13 +88,13 @@ export class ProgrammingService {
       },
       body: JSON.stringify(body),
     });
-  
+
     if (!res.ok) {
       const text = await res.text();
       console.error('❌ Piston error response:', text.substring(0, 200));
       throw new InternalServerErrorException(`Piston error ${res.status}: ${text.substring(0, 100)}`);
     }
-  
+
     const result = await res.json();
     console.log('✅ Piston response:', result);
     
@@ -124,6 +123,7 @@ export class ProgrammingService {
           got: stdout,
           stderr: r.run?.stderr ?? null,
           time: r.run?.time ?? null,
+          weight: t.weight ?? 1,
         });
       } catch (err) {
         tests.push({
@@ -133,19 +133,25 @@ export class ProgrammingService {
           got: null,
           stderr: String(err),
           time: null,
+          weight: t.weight ?? 1,
         });
       }
     }
 
-    const totalWeight = (testCases?.reduce((s, x) => s + (x.weight ?? 1), 0) || testCases.length || 1);
-    const passedWeight = tests.reduce((s, tr) => {
-      const tMeta = testCases.find((tc: any) => tc.id === tr.test_id);
-      const w = tMeta?.weight ?? 1;
-      return s + (tr.passed ? w : 0);
-    }, 0);
-    const score = (passedWeight / totalWeight) * 100;
+    // ⭐ CÁLCULO: Puntaje directo = suma de pesos de tests pasados
+    const totalWeight = testCases.reduce((s, x) => s + (x.weight ?? 1), 0);
+    const passedWeight = tests.reduce((s, tr) => s + (tr.passed ? (tr.weight ?? 1) : 0), 0);
+    
+    const score = totalWeight > 0 ? (passedWeight / totalWeight) * 100 : 0;
+    const puntajeObtenido = passedWeight;
 
-    return { runResult, tests, score };
+    return { 
+      runResult, 
+      tests, 
+      score,
+      puntajeObtenido,
+      puntajeMaximo: totalWeight
+    };
   }
 
   async saveAttempt(attempt: {
@@ -178,7 +184,7 @@ export class ProgrammingService {
 
   async createTestCase(dto: any) {
     const row = {
-      ejercicio_id: dto.ejercicio_id ?? dto.ejercicioId ?? dto.ejercicio_id,
+      ejercicio_id: dto.ejercicio_id ?? dto.ejercicioId,
       stdin: dto.stdin ?? null,
       expected: dto.expected ?? null,
       weight: dto.weight ?? 1,
@@ -207,40 +213,40 @@ export class ProgrammingService {
 
   async updateProgrammingExercise(id: string, dto: any) {
     const { error: err1 } = await this.supabase
-        .from('ejercicio')
-        .update({
+      .from('ejercicio')
+      .update({
         enunciado: dto.enunciado,
         puntos: dto.puntos ?? 1,
         metadata: dto.metadata ?? {},
-        })
-        .eq('id', id);
+      })
+      .eq('id', id);
 
     if (err1) throw new InternalServerErrorException(err1.message);
 
     await this.deleteTestCases(id);
 
     for (const t of dto.tests) {
-        await this.createTestCase({
+      await this.createTestCase({
         ejercicio_id: id,
         stdin: t.stdin,
         expected: t.expected,
         weight: t.weight ?? 1,
         timeout_seconds: 3,
         public: false,
-        });
+      });
     }
 
     return { ok: true };
-    }
+  }
 
-    async deleteProgrammingExercise(id: string) {
+  async deleteProgrammingExercise(id: string) {
     await this.deleteTestCases(id);
 
     const { error } = await this.supabase
-        .from('ejercicio')
-        .delete()
-        .eq('id', id);
+      .from('ejercicio')
+      .delete()
+      .eq('id', id);
 
     if (error) throw new InternalServerErrorException(error.message);
-    }
+  }
 }

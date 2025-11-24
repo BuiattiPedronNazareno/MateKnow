@@ -589,13 +589,36 @@ export default function RealizarActividadPage() {
       </Box>
     );
   }
-  
+
+  // ⭐ VALIDACIÓN ADICIONAL: Si activeStep está fuera de rango
+  if (activeStep >= ejercicios.length) {
+    console.warn('⚠️ activeStep fuera de rango, ajustando...');
+    setActiveStep(ejercicios.length - 1);
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F5DEB3' }}>
+        <CircularProgress size={60} sx={{ color: '#8B4513' }} />
+      </Box>
+    );
+  }
+
+  // ⭐ VALIDACIÓN: Asegurar que currentEjercicio existe
   const currentEjercicio = ejercicios[activeStep];
+  if (!currentEjercicio) {
+    console.error('❌ Ejercicio no encontrado en step:', activeStep);
+    setActiveStep(0); // Resetear a la primera pregunta
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F5DEB3' }}>
+        <CircularProgress size={60} sx={{ color: '#8B4513' }} />
+      </Box>
+    );
+  }
+
   const progress = ((activeStep + 1) / ejercicios.length) * 100;
   const isMultipleChoice = currentEjercicio.tipo === 'multiple-choice' || currentEjercicio.tipo === 'latex';
   const isTrueFalse = currentEjercicio.tipo === 'true_false'; 
   const isAbierta = currentEjercicio.tipo === 'abierta';
   const isProgramming = currentEjercicio.tipo === 'programming';
+    
 
   return (
     <MathJaxContext version={3} config={mathjaxConfig}>

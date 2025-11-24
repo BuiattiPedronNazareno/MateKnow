@@ -284,6 +284,13 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
                                   >
                                     Esperado: "{test.expected?.trim()}" | Obtenido: "{test.got?.trim()}"
                                   </Typography>
+                                  {/* ⭐ MOSTRAR PESO */}
+                                  <Typography 
+                                    variant="caption" 
+                                    sx={{ color: '#8B949E', display: 'block', mt: 0.5 }}
+                                  >
+                                    Peso: {test.weight || 1} punto{(test.weight || 1) !== 1 ? 's' : ''}
+                                  </Typography>
                                 </Box>
                                 <Chip 
                                   label={test.passed ? 'PASS' : 'FAIL'}
@@ -298,17 +305,18 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
                             ))}
                           </Box>
                           
-                          {/* Score total */}
+                          {/* ⭐ Score total CON PUNTAJE REAL */}
                           <Box sx={{ mt: 2, p: 2, bgcolor: '#0D1117', borderRadius: 1, textAlign: 'center' }}>
                             <Typography variant="h4" sx={{ color: result.score === 100 ? '#3FB950' : '#FFA657', fontWeight: 700 }}>
-                              {result.score}%
+                              {result.puntajeObtenido || 0} / {result.puntajeMaximo || 0} puntos
                             </Typography>
                             <Typography variant="caption" sx={{ color: '#8B949E' }}>
-                              Puntaje Total
+                              {result.score}% completado
                             </Typography>
                           </Box>
                         </Box>
                       )}
+
                     </Box>
                   );
                 }

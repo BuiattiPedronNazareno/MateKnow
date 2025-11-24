@@ -176,6 +176,17 @@ export default function EjercicioForm({
         }
       }
 
+      const puntosEjercicio = parseInt(puntos) || 1;
+      const sumaPesos = tests.reduce((sum, t: any) => sum + (t.weight || 1), 0);
+      
+      if (sumaPesos !== puntosEjercicio) {
+        setFetchError(
+          `⚠️ La suma de los pesos de los tests (${sumaPesos}) debe ser igual a los puntos del ejercicio (${puntosEjercicio}). ` +
+          `Ajusta los pesos o los puntos del ejercicio.`
+        );
+        return;
+      }  
+
       try {
         setFetchError("");
         
@@ -337,6 +348,7 @@ export default function EjercicioForm({
           setMetadata={setMetadata}
           tests={tests}
           setTests={setTests}
+          puntos={parseInt(puntos) || 1}
         />
       )}
 

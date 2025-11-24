@@ -26,32 +26,44 @@ export class ProgrammingController {
 
   @Post('attempts')
   async createAttempt(@Body() dto: CreateAttemptDto, @Request() req) {
-    // ⭐ CAMBIO: Obtener usuarioId del token en lugar del DTO
-    const usuarioId = req.user.id;  // Ya viene del AuthGuard
+    const usuarioId = req.user.id;
     
     const tests = await this.svc.getTestCasesByEjercicio(dto.ejercicioId);
-    const { runResult, tests: detail, score } = await this.svc.runTests(
+    const { runResult, tests: detail, score, puntajeObtenido, puntajeMaximo } = await this.svc.runTests(
       dto.lenguaje,
       dto.version ?? null,
       dto.codigo,
       tests,
     );
-
+  
     if (dto.runOnly) {
-      return { runResult, tests: detail, score };
+      return { 
+        runResult, 
+        tests: detail, 
+        score,
+        puntajeObtenido, // ⭐ Agregar
+        puntajeMaximo    // ⭐ Agregar
+      };
     }
-
+  
     const saved = await this.svc.saveAttempt({
       ejercicioId: dto.ejercicioId,
-      usuarioId,  // ⭐ Usar el ID del token
+      usuarioId,
       codigo: dto.codigo,
       lenguaje: dto.lenguaje,
       runResult,
       tests: detail,
-      score,
+      score: puntajeObtenido, // ⭐ Guardar puntaje real, no porcentaje
     });
-
-    return { attempt: saved, runResult, tests: detail, score };
+  
+    return { 
+      attempt: saved, 
+      runResult, 
+      tests: detail, 
+      score,
+      puntajeObtenido, // ⭐ Agregar
+      puntajeMaximo    // ⭐ Agregar
+    };
   }
 
   @Get('attempts')
