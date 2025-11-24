@@ -7,7 +7,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: 'http://localhost:3000', // Tu frontend Next.js
+    origin: 'https://mateknow-frontend-ulxo.onrender.com/', // Tu frontend Next.js
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
@@ -27,8 +27,9 @@ async function bootstrap() {
 
   const PORT = process.env.PORT || 4000;
   await app.listen(PORT);
-  
+
   console.log(`🚀 Backend corriendo en: http://localhost:${PORT}`);
   console.log(`🔌 WebSocket Versus en: ws://localhost:${PORT}/versus`);
 }
 bootstrap();
+
