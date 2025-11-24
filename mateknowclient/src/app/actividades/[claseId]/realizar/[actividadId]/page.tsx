@@ -4,17 +4,18 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   Box, Container, Paper, Typography, Button, CircularProgress,
-  LinearProgress, Radio, RadioGroup, FormControlLabel, FormControl,
-  TextField, Alert, Card, CardContent, Divider, Chip, useTheme,
+  LinearProgress, Radio, RadioGroup, FormControl,
+  TextField, Alert, Card, CardContent, Divider, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import {
   Timer, CheckCircle, NavigateNext, NavigateBefore, Coffee,
-  Cancel, Check, ArrowBack, Visibility, Quiz, Whatshot
+  Cancel, Check, ArrowBack, Visibility, Quiz, Whatshot,
+  Code as CodeIcon, Warning, Pending
 } from '@mui/icons-material';
 import { actividadService, Intento } from '@/app/services/actividadService';
 import { MathJax, MathJaxContext } from "better-react-mathjax";
-
+import CodeEditorModal from '@/app/components/CodeEditorModal';
 
 // Componente Timer con estilo Mate
 const ExamTimer = ({ fechaFin, onExpire }: { fechaFin: string, onExpire: () => void }) => {
@@ -131,7 +132,7 @@ export default function RealizarActividadPage() {
 
   // PARÁMETROS DE URL
   const isReviewModeParam = searchParams.get('mode') === 'revision';
-  const intentoIdParam = searchParams.get('intentoId'); // ID específico del intento a revisar
+  const intentoIdParam = searchParams.get('intentoId');
 
   const [loading, setLoading] = useState(true);
   const [actividad, setActividad] = useState<any>(null);
@@ -147,9 +148,22 @@ export default function RealizarActividadPage() {
   const [streak, setStreak] = useState<number>(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  
+  // DIÁLOGOS (Reemplazo de alerts)
   const [openFinishDialog, setOpenFinishDialog] = useState(false);
+  const [openTimeoutDialog, setOpenTimeoutDialog] = useState(false);
+  const [openIncompleteDialog, setOpenIncompleteDialog] = useState(false);
+  const [openErrorDialog, setOpenErrorDialog] = useState(false);
+  const [dialogErrorMessage, setDialogErrorMessage] = useState('');
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // MODAL EDITOR DE CÓDIGO
+  const [openCodeEditor, setOpenCodeEditor] = useState(false);
+  const [selectedProgrammingExercise, setSelectedProgrammingExercise] = useState<any>(null);
+
+  // Estado para controlar el inicio de la sesión actual (reinicio del timer)
+  const [sessionStartTime, setSessionStartTime] = useState<string | null>(null);
 
   // CONFIGURACIÓN DE MATHJAX
   const mathjaxConfig = {
@@ -158,76 +172,53 @@ export default function RealizarActividadPage() {
       inlineMath: [["$", "$"], ["\\(", "\\)"]],
       displayMath: [["$$", "$$"]],
     },
-    // AGREGAR ESTA LÍNEA para asegurar la carga:
     src: "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
   };
 
   useEffect(() => {
-    // Evitar que corra si no hay IDs o si ya se inicializó
     if (!claseId || !actividadId || initialized.current) return;
-
-    // Marcar como inicializado inmediatamente
     initialized.current = true;
-
     initEvaluation();
     
-    // ⭐ NUEVO: Restaurar el step después de cargar
     const savedStep = sessionStorage.getItem('current_step');
-      if (savedStep) {
-        const step = parseInt(savedStep);
-        if (!isNaN(step) && step >= 0) {
-          console.log('🔄 Restaurando step:', step);
-          setActiveStep(step);
-          sessionStorage.removeItem('current_step'); // Limpiar después de usar
-        }
+    if (savedStep) {
+      const step = parseInt(savedStep);
+      if (!isNaN(step) && step >= 0) {
+        setActiveStep(step);
+        sessionStorage.removeItem('current_step');
       }
-      
-      // Cleanup opcional: si desmonta, permitir reiniciar (útil en dev)
-      return () => { initialized.current = false; };
-    }, [actividadId, claseId, isReviewModeParam, intentoIdParam]);
-
-
+    }
+    
+    return () => { initialized.current = false; };
+  }, [actividadId, claseId, isReviewModeParam, intentoIdParam]);
 
   const initEvaluation = async () => {
     try {
       setLoading(true);
       setError('');
 
-      // 1. MODO REVISIÓN (Historial o URL directa)
       if (isReviewModeParam) {
         await cargarModoRevision(intentoIdParam || undefined);
         return;
       }
 
-      // 2. MODO REALIZAR: Intentar iniciar o retomar intento
       const intentoRes = await actividadService.iniciarIntento(claseId, actividadId);
 
       if (intentoRes.intento.estado === 'finished') {
-        // Si el backend dice que ya terminó (ej. evaluación única), forzamos revisión
         await cargarModoRevision();
       } else {
-        // MODO EXAMEN EN PROGRESO
-        // Obtenemos detalle SIN respuestas correctas
         const detalleRes = await actividadService.getActividadById(claseId, actividadId);
         setActividad(detalleRes.actividad);
         setEjercicios(detalleRes.actividad.ejercicios || []);
         setIntento(intentoRes.intento);
 
-        // Cargar respuestas previas si existen
+        setSessionStartTime(new Date().toISOString());
+
         const map: any = {};
         (intentoRes.intento.respuestas || []).forEach((r: any) => { 
-          // ⭐ NUEVO: Manejar respuestas de programación (objetos) y normales (strings)
-          if (typeof r.respuesta === 'object' && r.respuesta !== null) {
-            // Es una respuesta de programación, guardar el objeto completo
-            map[r.ejercicioId] = r.respuesta;
-          } else {
-            // Es una respuesta normal (UUID de opción o texto)
-            map[r.ejercicioId] = r.respuesta;
-          }
+          map[r.ejercicioId] = r.respuesta;
         });
         setRespuestasLocales(map);
-        
-        console.log('📊 Respuestas cargadas:', map);
       }
 
     } catch (err: any) {
@@ -244,7 +235,6 @@ export default function RealizarActividadPage() {
       if (savedStep) {
         const step = parseInt(savedStep);
         if (!isNaN(step) && step >= 0 && step < ejercicios.length) {
-          console.log('🔄 Restaurando posición:', step + 1, 'de', ejercicios.length);
           setActiveStep(step);
           sessionStorage.removeItem('current_step');
         }
@@ -254,7 +244,6 @@ export default function RealizarActividadPage() {
 
   const cargarModoRevision = async (targetIntentoId?: string) => {
     setIsReviewMode(true);
-    // Pasamos targetIntentoId al servicio para obtener ese intento específico
     const revisionRes = await actividadService.getRevision(claseId, actividadId, targetIntentoId);
 
     setActividad(revisionRes.actividad);
@@ -262,14 +251,13 @@ export default function RealizarActividadPage() {
     setIntento(revisionRes.intento);
     setScore(revisionRes.intento.puntaje || 0);
 
-    // Mapear respuestas para la UI (Solo lectura)
     const map: any = {};
     (revisionRes.intento.respuestas || []).forEach((r: any) => { map[r.ejercicioId] = r.respuesta; });
     setRespuestasLocales(map);
   };
 
   const handleAnswerChange = (ejercicioId: string, valor: any) => {
-    if (isReviewMode || finished) return; // Bloquear cambios en revisión
+    if (isReviewMode || finished) return; 
 
     setRespuestasLocales(prev => ({ ...prev, [ejercicioId]: valor }));
     setSaving(true);
@@ -301,14 +289,12 @@ export default function RealizarActividadPage() {
     try {
       setLoading(true);
 
-      // Enviar respuestas finales
       const respuestasArray = Object.entries(respuestasLocales).map(([k, v]) => ({
         ejercicioId: k,
         respuesta: v
       }));
 
-      // Calcular tiempo transcurrido
-      const start = intento.started_at ? new Date(intento.started_at).getTime() : Date.now();
+      const start = sessionStartTime ? new Date(sessionStartTime).getTime() : Date.now();
       const duration = Math.floor((Date.now() - start) / 1000);
 
       const payload = {
@@ -317,7 +303,6 @@ export default function RealizarActividadPage() {
       };
       const res = await actividadService.finalizarIntento(claseId, intento.id, payload);
 
-      // Actualizar estado local para mostrar éxito sin recargar
       setScore(res.puntaje);
       if (res.resultado && res.resultado.racha_maxima) {
         setStreak(res.resultado.racha_maxima);
@@ -325,7 +310,8 @@ export default function RealizarActividadPage() {
       setFinished(true);
 
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error al finalizar');
+      setDialogErrorMessage(err.response?.data?.message || 'Error al finalizar');
+      setOpenErrorDialog(true);
       setLoading(false);
     } finally {
       setLoading(false);
@@ -334,15 +320,13 @@ export default function RealizarActividadPage() {
 
   const handleTimeExpire = () => {
     setOpenFinishDialog(false);
-    alert("¡Tiempo terminado! Entregando el mate...");
+    setOpenTimeoutDialog(true); // Mostrar aviso de tiempo agotado
 
     if (intento) {
       setLoading(true);
-
-      // Calcular tiempo transcurrido
-      const start = intento.started_at ? new Date(intento.started_at).getTime() : Date.now();
+      const start = sessionStartTime ? new Date(sessionStartTime).getTime() : Date.now();
       const duration = Math.floor((Date.now() - start) / 1000);
-
+      
       actividadService.finalizarIntento(claseId, intento.id, { tiempoSegundos: duration })
         .then(res => {
           setScore(res.puntaje);
@@ -352,7 +336,8 @@ export default function RealizarActividadPage() {
           setFinished(true);
         })
         .catch(err => {
-          alert(err.response?.data?.message || 'Error al finalizar por tiempo');
+          setDialogErrorMessage(err.response?.data?.message || 'Error al finalizar por tiempo');
+          setOpenErrorDialog(true);
         })
         .finally(() => setLoading(false));
     }
@@ -361,9 +346,8 @@ export default function RealizarActividadPage() {
   const handleGoToReview = async () => {
     setLoading(true);
     try {
-      // Al ir a revisión desde la pantalla de éxito, cargamos el último intento (el recién hecho)
       await cargarModoRevision();
-      setFinished(false); // Quitamos pantalla de éxito para mostrar la revisión
+      setFinished(false); 
     } catch (error) {
       console.error(error);
     } finally {
@@ -377,7 +361,7 @@ export default function RealizarActividadPage() {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', bgcolor: '#F5DEB3' }}>
         <CircularProgress size={60} sx={{ color: '#8B4513', mb: 2 }} />
-        <Typography sx={{ color: '#5D4037', fontWeight: 600 }}>Preparando el agua...</Typography>
+        <Typography sx={{ color: '#5D4037', fontWeight: 600 }}>Cargando evaluación...</Typography>
       </Box>
     );
   }
@@ -389,7 +373,7 @@ export default function RealizarActividadPage() {
           <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 2, bgcolor: '#FFF' }}>
             <Coffee sx={{ fontSize: 60, color: '#D32F2F', mb: 2 }} />
             <Typography variant="h5" color="error" gutterBottom fontWeight="bold">
-              Ups, el agua se enfrió
+              Ha ocurrido un problema
             </Typography>
             <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>
             <Button variant="contained" onClick={() => router.back()} sx={{ bgcolor: '#8B4513' }}>
@@ -406,11 +390,15 @@ export default function RealizarActividadPage() {
   // --------------------------------------------------------------------------
   if (finished) {
     const totalPuntos = ejercicios.reduce((acc, e) => acc + (Number(e.puntos) || 0), 0);
+    
+    // Calcular ejercicios pendientes (tipo 'abierta')
+    const pendingCount = ejercicios.filter(e => e.tipo === 'abierta').length;
 
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pt: 8 }}>
         <Container maxWidth="sm" sx={{ textAlign: 'center' }}>
           <Paper sx={{ p: 4, borderRadius: 3, boxShadow: '0 8px 24px rgba(139,69,19,0.2)' }}>
+            {/* ... icono y textos anteriores ... */}
             <CheckCircle sx={{ fontSize: 80, color: '#388E3C', mb: 2 }} />
             <Typography variant="h4" gutterBottom sx={{ fontWeight: 700, color: '#3E2723' }}>
               ¡Examen Entregado!
@@ -419,7 +407,17 @@ export default function RealizarActividadPage() {
               Tus respuestas quedaron guardadas correctamente.
             </Typography>
 
-            <Box sx={{ my: 4, p: 3, bgcolor: '#FFF8E1', borderRadius: 2, border: '2px dashed #D2691E' }}>
+            <Box sx={{ 
+              my: 4, 
+              p: 3, 
+              bgcolor: '#FFF8E1', 
+              borderRadius: 2, 
+              border: '2px dashed #D2691E',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center', 
+              gap: 1       
+            }}>
               <Typography variant="subtitle1" sx={{ color: '#8B4513', fontWeight: 600 }} gutterBottom>
                 TU CALIFICACIÓN
               </Typography>
@@ -427,6 +425,17 @@ export default function RealizarActividadPage() {
                 {score} / {totalPuntos}
               </Typography>
               <Typography variant="caption" sx={{ color: '#5D4037' }}>Puntos obtenidos</Typography>
+
+              {/* Aviso de pendientes */}
+              {pendingCount > 0 && (
+                <Chip 
+                  label={`${pendingCount} ${pendingCount === 1 ? 'ejercicio pendiente' : 'ejercicios pendientes'} de corrección`}
+                  color="warning"
+                  variant="outlined"
+                  size="small"
+                  sx={{ mt: 2, fontWeight: 'bold', bgcolor: 'rgba(237, 108, 2, 0.05)' }}
+                />
+              )}
 
               {/* RACHA MÁXIMA */}
               {streak > 0 && (
@@ -462,6 +471,17 @@ export default function RealizarActividadPage() {
             </Box>
           </Paper>
         </Container>
+
+        {/* Dialogo informativo de tiempo agotado (si aplicó) */}
+        <Dialog open={openTimeoutDialog} onClose={() => setOpenTimeoutDialog(false)}>
+          <DialogTitle sx={{ color: '#D32F2F', fontWeight: 'bold' }}>Tiempo Agotado</DialogTitle>
+          <DialogContent>
+            <Typography>El tiempo ha finalizado. Tu examen ha sido entregado automáticamente.</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenTimeoutDialog(false)} sx={{ color: '#5D4037' }}>Entendido</Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     );
   }
@@ -475,7 +495,6 @@ export default function RealizarActividadPage() {
     return (
       <MathJaxContext version={3} config={mathjaxConfig}>
         <Box sx={{ minHeight: '100vh', bgcolor: '#F5DEB3', pb: 8 }}>
-          {/* Header Revisión */}
           <Box sx={{ bgcolor: '#3E2723', color: 'white', py: 3, px: 2, textAlign: 'center', mb: 4, boxShadow: 3 }}>
             <Typography variant="h5" fontWeight="bold">Revisión de Examen</Typography>
             <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>{actividad?.nombre}</Typography>
@@ -507,15 +526,10 @@ export default function RealizarActividadPage() {
               let puntosObtenidos = 0;
               let fueCorregido = !!respObjeto?.corregido;
 
-              // DETECCIÓN DE TIPO: Abierta o Latex sin opciones se tratan igual
               const isTipoAbierta = ej.tipo === 'abierta' || (ej.tipo === 'latex' && (!ej.opciones || ej.opciones.length === 0));
-
-              // ⭐ NUEVO: Detectar ejercicios de programación
               const isProgramming = ej.tipo === 'programming';
 
-              // 2. LÓGICA DE CORRECCIÓN
               if (isTipoAbierta) {
-                // ... código existente para preguntas abiertas
                 if (fueCorregido && respObjeto.puntajeManual !== undefined) {
                   puntosObtenidos = Number(respObjeto.puntajeManual);
                   esCorrecto = puntosObtenidos > 0;
@@ -524,20 +538,17 @@ export default function RealizarActividadPage() {
                   esCorrecto = false;
                 }
               } 
-              // ⭐ NUEVO CASO: EJERCICIO DE PROGRAMACIÓN
               else if (isProgramming) {
-                // La respuesta de programación es un objeto con { codigo, score, tests, ... }
                 if (respuestaUsuario && typeof respuestaUsuario === 'object' && respuestaUsuario.score !== undefined) {
                   const scorePercent = Number(respuestaUsuario.score) || 0;
                   puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
-                  esCorrecto = scorePercent >= 100; // Considera correcto si pasa todos los tests
+                  esCorrecto = scorePercent >= 100;
                 } else {
                   puntosObtenidos = 0;
                   esCorrecto = false;
                 }
               }
               else {
-                // LÓGICA AUTOMÁTICA (Multiple Choice, True/False, etc.)
                 const opcionCorrecta = ej.opciones?.find((o: any) => o.is_correcta);
                 const idUsuario = String(respuestaUsuario || '').trim();
                 const idCorrecta = String(opcionCorrecta?.id || '').trim();
@@ -548,7 +559,6 @@ export default function RealizarActividadPage() {
                 }
               }
 
-              // Determinar color del borde
               let borderColor = esCorrecto ? '6px solid #2E7D32' : '6px solid #D32F2F';
               if (isTipoAbierta && !fueCorregido) {
                 borderColor = '6px solid #ED6C02';
@@ -573,13 +583,24 @@ export default function RealizarActividadPage() {
                       </Box>
                     </Box>
 
-                    {/* ENUNCIADO CON LATEX */}
                     <Typography variant="h6" gutterBottom sx={{ mb: 3, fontWeight: 500 }} component="div">
                       <MathJax dynamic>{ej.enunciado}</MathJax>
                     </Typography>
 
-                    {/* OPCIONES RENDERIZADAS (Multiple Choice / True False / Latex con opciones) */}
-                    {!isTipoAbierta && ej.opciones && (
+                    {/* PROGRAMMING REVIEW */}
+                    {isProgramming && (
+                      <Box sx={{ bgcolor: '#FAFAFA', p: 2, borderRadius: 1, border: '1px solid #e0e0e0' }}>
+                        <Typography variant="caption" color="text.secondary" fontWeight="bold">Código enviado:</Typography>
+                        <Paper variant="outlined" sx={{ mt: 1, p: 2, bgcolor: '#fff', fontFamily: 'monospace', fontSize: '0.85rem', overflowX: 'auto' }}>
+                          <pre style={{ margin: 0 }}>{respuestaUsuario?.codigo || '(Sin código)'}</pre>
+                        </Paper>
+                        <Typography variant="caption" sx={{ mt: 1, display: 'block', color: esCorrecto ? 'success.main' : 'error.main' }}>
+                          Score obtenido: {respuestaUsuario?.score ? Number(respuestaUsuario.score).toFixed(0) : 0}%
+                        </Typography>
+                      </Box>
+                    )}
+
+                    {!isTipoAbierta && !isProgramming && ej.opciones && (
                       <Box>
                         {ej.opciones.map((op: any) => {
                           const opId = String(op.id).trim();
@@ -612,7 +633,6 @@ export default function RealizarActividadPage() {
                               }}
                             >
                               <Box sx={{ mr: 1, display: 'flex' }}>{icon}</Box>
-                              {/* OPCIÓN CON LATEX */}
                               <Typography sx={{ flex: 1, fontWeight: isCorrect ? 600 : 400 }} component="div">
                                 <MathJax inline>{op.texto}</MathJax>
                               </Typography>
@@ -625,11 +645,22 @@ export default function RealizarActividadPage() {
                       </Box>
                     )}
 
-                    {/* RESPUESTA ABIERTA (O Latex sin opciones) */}
+                    {/* Bloque para pregunta abierta */}
                     {isTipoAbierta && (
-                      <Box sx={{ bgcolor: '#F5F5F5', p: 2, borderRadius: 1, mt: 1 }}>
-                        <Typography variant="caption" color="text.secondary">Tu respuesta:</Typography>
-                        <Typography sx={{ fontStyle: 'italic', mt: 1 }}>{respuestaUsuario || '(Sin respuesta)'}</Typography>
+                      <Box sx={{ mt: 1 }}>
+                        <Box sx={{ bgcolor: '#F5F5F5', p: 2, borderRadius: 1 }}>
+                          <Typography variant="caption" color="text.secondary">Tu respuesta:</Typography>
+                          <Typography sx={{ fontStyle: 'italic', mt: 1 }}>{respuestaUsuario || '(Sin respuesta)'}</Typography>
+                        </Box>
+                        
+                        {/* Estado de corrección */}
+                        <Box sx={{ mt: 1.5 }}>
+                          {fueCorregido ? (
+                            <Chip label="Corregido por el profesor" size="small" color="success" variant="outlined" icon={<CheckCircle />} />
+                          ) : (
+                            <Chip label="Pendiente de corrección" size="small" color="warning" variant="outlined" icon={<Pending />} />
+                          )}
+                        </Box>
                       </Box>
                     )}
                   </CardContent>
@@ -665,7 +696,7 @@ export default function RealizarActividadPage() {
             </Typography>
             <Typography color="text.secondary" paragraph sx={{ mb: 4, lineHeight: 1.6 }}>
               Parece que el profesor está preparando el material para esta actividad.<br />
-              Tomate unos mates 🧉 y vuelve a intentar más tarde.
+              Tomate unos mates y vuelve a intentar más tarde.
             </Typography>
             <Button
               variant="contained"
@@ -687,35 +718,29 @@ export default function RealizarActividadPage() {
     );
   }
 
-  // ⭐ VALIDACIÓN ADICIONAL: Si activeStep está fuera de rango
   if (activeStep >= ejercicios.length) {
-    console.warn('⚠️ activeStep fuera de rango, ajustando...');
     setActiveStep(ejercicios.length - 1);
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F5DEB3' }}>
-        <CircularProgress size={60} sx={{ color: '#8B4513' }} />
-      </Box>
-    );
+    return <Box sx={{ display: 'flex', justifyContent: 'center', height: '100vh' }}><CircularProgress /></Box>;
   }
 
-  // ⭐ VALIDACIÓN: Asegurar que currentEjercicio existe
   const currentEjercicio = ejercicios[activeStep];
-  if (!currentEjercicio) {
-    console.error('❌ Ejercicio no encontrado en step:', activeStep);
-    setActiveStep(0); // Resetear a la primera pregunta
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', bgcolor: '#F5DEB3' }}>
-        <CircularProgress size={60} sx={{ color: '#8B4513' }} />
-      </Box>
-    );
-  }
+  if (!currentEjercicio) return null;
 
   const progress = ((activeStep + 1) / ejercicios.length) * 100;
   const isMultipleChoice = currentEjercicio.tipo === 'multiple-choice' || currentEjercicio.tipo === 'latex';
   const isTrueFalse = currentEjercicio.tipo === 'true_false'; 
   const isAbierta = currentEjercicio.tipo === 'abierta';
   const isProgramming = currentEjercicio.tipo === 'programming';
-    
+
+  // Handlers para Modales y Navegación
+  const handleNextStep = () => {
+    // Si es programación y no hay respuesta, mostrar alerta personalizada
+    if (isProgramming && !respuestasLocales[currentEjercicio.id]) {
+      setOpenIncompleteDialog(true);
+      return;
+    }
+    setActiveStep(prev => prev + 1);
+  };
 
   return (
     <MathJaxContext version={3} config={mathjaxConfig}>
@@ -734,12 +759,10 @@ export default function RealizarActividadPage() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {saving && <CircularProgress size={20} sx={{ color: '#F5DEB3' }} />}
 
-            {/* Cronómetro de tiempo transcurrido (Solo si NO es evaluación con tiempo límite) */}
-            {intento && intento.started_at && !(actividad.tipo === 'evaluacion' && actividad.fecha_fin) && (
-              <ElapsedTimer startTime={intento.started_at} />
+            {intento && sessionStartTime && !(actividad.tipo === 'evaluacion' && actividad.fecha_fin) && (
+              <ElapsedTimer startTime={sessionStartTime} />
             )}
 
-            {/* Cuenta regresiva si hay fecha límite */}
             {actividad.tipo === 'evaluacion' && actividad.fecha_fin && (
               <ExamTimer fechaFin={actividad.fecha_fin} onExpire={handleTimeExpire} />
             )}
@@ -755,13 +778,11 @@ export default function RealizarActividadPage() {
 
           <Card sx={{ minHeight: 450, display: 'flex', flexDirection: 'column', p: 2, boxShadow: '0 8px 24px rgba(62,39,35,0.15)', borderRadius: 3 }}>
             <CardContent sx={{ flex: 1, p: 3 }}>
-              {/* Cabecera del Ejercicio */}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
                 <Chip label={`Ejercicio ${activeStep + 1}`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 600 }} />
                 <Chip label={`${currentEjercicio.puntos} pts`} variant="outlined" sx={{ borderColor: '#D2691E', color: '#D2691E', fontWeight: 600 }} />
               </Box>
 
-              {/* ENUNCIADO CON SOPORTE LATEX */}
               <Typography variant="h5" gutterBottom sx={{ mb: 4, fontWeight: 500, color: '#3E2723' }} component="div">
                 <MathJax dynamic>{currentEjercicio.enunciado}</MathJax>
               </Typography>
@@ -769,7 +790,6 @@ export default function RealizarActividadPage() {
               <Divider sx={{ mb: 4, borderColor: 'rgba(139,69,19,0.1)' }} />
 
               <Box>
-                {/* OPCIÓN 1: MULTIPLE CHOICE / TRUE FALSE / LATEX CON OPCIONES */}
                 {(isMultipleChoice || isTrueFalse) && (
                   <FormControl component="fieldset" sx={{ width: '100%' }}>
                     <RadioGroup
@@ -792,14 +812,11 @@ export default function RealizarActividadPage() {
                             }}
                           >
                             <Radio checked={isSelected} sx={{ color: '#8B4513', '&.Mui-checked': { color: '#D2691E' }, mr: 2 }} />
-
-                            {/* TEXTO DE LA OPCIÓN CON SOPORTE LATEX */}
                             <Box sx={{ width: '100%' }}>
                               <Typography variant="body1" fontWeight={isSelected ? 600 : 400} component="div">
                                 <MathJax inline dynamic>{op.texto}</MathJax>
                               </Typography>
                             </Box>
-
                           </Paper>
                         );
                       })}
@@ -807,7 +824,6 @@ export default function RealizarActividadPage() {
                   </FormControl>
                 )}
 
-                {/* OPCIÓN 2: PREGUNTA ABIERTA / LATEX SIN OPCIONES */}
                 {isAbierta && (
                   <TextField
                     fullWidth multiline rows={8} placeholder="Escribe tu respuesta detallada aquí..."
@@ -833,25 +849,10 @@ export default function RealizarActividadPage() {
                     <Button
                       variant="contained"
                       fullWidth
+                      startIcon={<CodeIcon />}
                       onClick={() => {
-                        // ⭐ Guardar TODOS los datos de sesión
-                        if (intento?.id) {
-                          sessionStorage.setItem('current_intento_id', intento.id);
-                          sessionStorage.setItem('current_actividad_id', actividadId);
-                          sessionStorage.setItem('current_clase_id', claseId);
-                          sessionStorage.setItem('current_step', String(activeStep)); // ⭐ NUEVO
-                          
-                          console.log('📝 Datos guardados en sesión:', {
-                            intentoId: intento.id,
-                            actividadId,
-                            claseId,
-                            step: activeStep
-                          });
-                        }
-                        
-                        // Construir URL con parámetro returnTo
-                        const returnUrl = `/actividades/${claseId}/realizar/${actividadId}`;
-                        router.push(`/ejercicios/programming/${currentEjercicio.id}?returnTo=${encodeURIComponent(returnUrl)}`);
+                        setSelectedProgrammingExercise(currentEjercicio);
+                        setOpenCodeEditor(true);
                       }}
                       sx={{ 
                         bgcolor: '#2E7D32', 
@@ -861,26 +862,23 @@ export default function RealizarActividadPage() {
                         fontWeight: 600
                       }}
                     >
-                      🖥️ Abrir Editor de Código
+                      Abrir Editor de Código
                     </Button>
                     
-                    {/* Mostrar si ya tiene código guardado */}
                     {respuestasLocales[currentEjercicio.id] && (
-                      <Alert severity="success" sx={{ mt: 2 }}>
-                        ✅ Ya tienes código guardado para este ejercicio. Puedes editarlo nuevamente.
+                      <Alert severity="success" icon={<CheckCircle fontSize="inherit" />} sx={{ mt: 2 }}>
+                        Ya tienes código guardado para este ejercicio. Puedes editarlo nuevamente.
                       </Alert>
                     )}
                   </Box>
                 )}
 
-                {/* ALERTA DE FALLBACK */}
                 {!isMultipleChoice && !isTrueFalse && !isAbierta && !isProgramming && (
                   <Alert severity="warning">Tipo de ejercicio desconocido: {currentEjercicio.tipo}</Alert>
                 )}
               </Box>
             </CardContent>
 
-            {/* BOTONES DE NAVEGACIÓN */}
             <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', mt: 2 }}>
               <Button 
                 startIcon={<NavigateBefore />} 
@@ -906,16 +904,7 @@ export default function RealizarActividadPage() {
                 <Button 
                   variant="contained" 
                   endIcon={<NavigateNext />} 
-                  onClick={() => {
-                    // ⭐ Si es ejercicio de programación y no tiene respuesta, advertir
-                    if (isProgramming && !respuestasLocales[currentEjercicio.id]) {
-                      const confirmar = window.confirm(
-                        '⚠️ No has completado el ejercicio de programación. ¿Deseas continuar de todos modos?'
-                      );
-                      if (!confirmar) return;
-                    }
-                    setActiveStep(prev => prev + 1);
-                  }} 
+                  onClick={handleNextStep} 
                   size="large" 
                   sx={{ bgcolor: '#8B4513', '&:hover': { bgcolor: '#654321' } }}
                 >
@@ -926,14 +915,69 @@ export default function RealizarActividadPage() {
           </Card>
         </Container>
 
+        {/* ================== DIÁLOGOS ================== */}
+
+        {/* Confirmar Finalizar */}
         <Dialog open={openFinishDialog} onClose={() => setOpenFinishDialog(false)}>
           <DialogTitle sx={{ fontWeight: 700, color: '#3E2723' }}>Finalizar evaluación</DialogTitle>
-          <DialogContent><Typography sx={{ color: '#5D4037' }}>¿Finalizar evaluación? No podrás cambiar tus respuestas.</Typography></DialogContent>
+          <DialogContent><Typography sx={{ color: '#5D4037' }}>¿Estás seguro de finalizar? No podrás cambiar tus respuestas.</Typography></DialogContent>
           <DialogActions sx={{ p: 2 }}>
             <Button onClick={() => setOpenFinishDialog(false)} sx={{ color: '#5D4037' }}>Cancelar</Button>
             <Button variant="contained" onClick={handleConfirmFinalizar} sx={{ bgcolor: '#D2691E', '&:hover': { bgcolor: '#BF360C' } }}>Finalizar</Button>
           </DialogActions>
         </Dialog>
+
+        {/* Aviso de Incompleto (Programación) */}
+        <Dialog open={openIncompleteDialog} onClose={() => setOpenIncompleteDialog(false)}>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, color: '#ED6C02' }}>
+            <Warning /> Ejercicio incompleto
+          </DialogTitle>
+          <DialogContent>
+            <Typography>No has completado el ejercicio de programación. ¿Deseas continuar de todos modos?</Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setOpenIncompleteDialog(false)} sx={{ color: '#5D4037' }}>Revisar</Button>
+            <Button 
+              variant="outlined" 
+              onClick={() => {
+                setOpenIncompleteDialog(false);
+                setActiveStep(prev => prev + 1);
+              }} 
+              color="warning"
+            >
+              Continuar sin responder
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Errores */}
+        <Dialog open={openErrorDialog} onClose={() => setOpenErrorDialog(false)}>
+          <DialogTitle sx={{ color: '#D32F2F' }}>Error</DialogTitle>
+          <DialogContent><Typography>{dialogErrorMessage}</Typography></DialogContent>
+          <DialogActions><Button onClick={() => setOpenErrorDialog(false)}>Cerrar</Button></DialogActions>
+        </Dialog>
+
+        {/* MODAL EDITOR DE CÓDIGO */}
+        {selectedProgrammingExercise && (
+          <CodeEditorModal
+            open={openCodeEditor}
+            onClose={() => {
+              setOpenCodeEditor(false);
+              setSelectedProgrammingExercise(null);
+            }}
+            ejercicio={selectedProgrammingExercise}
+            initialCode={
+              respuestasLocales[selectedProgrammingExercise.id]?.codigo || 
+              selectedProgrammingExercise.metadata?.boilerplate || 
+              ''
+            }
+            onSuccess={(score, resultado) => {
+              // Guardar la respuesta completa (objeto attempt)
+              handleAnswerChange(selectedProgrammingExercise.id, resultado);
+            }}
+          />
+        )}
+
       </Box>
     </MathJaxContext>
   );
