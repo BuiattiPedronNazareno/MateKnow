@@ -30,7 +30,7 @@ export default function ProgramacionEditor({
   setTests: (t: any[]) => void;
   puntos?: number;
 }) {
-  // ⭐ FUNCIÓN PARA AGREGAR TEST
+  // FUNCIÓN PARA AGREGAR TEST
   const addTest = () => {
     setTests([
       ...tests, 
@@ -44,12 +44,12 @@ export default function ProgramacionEditor({
     ]);
   };
 
-  // ⭐ FUNCIÓN PARA ELIMINAR TEST
+  // FUNCIÓN PARA ELIMINAR TEST
   const removeTest = (index: number) => {
     setTests(tests.filter((_, i) => i !== index));
   };
 
-  // ⭐ Calcular suma de pesos en tiempo real
+  // Calcular suma de pesos en tiempo real
   const sumaPesos = tests.reduce((sum, t) => sum + (t.weight || 1), 0);
   const puntosEjercicio = puntos || 0;
   const diferencia = puntosEjercicio - sumaPesos;
@@ -62,7 +62,7 @@ export default function ProgramacionEditor({
         severity="info" 
         sx={{ mb: 0, bgcolor: '#E1F5FE', color: '#0277BD', fontWeight: 500 }}
       >
-        ℹ️ El código debe escribirse en <strong>Python</strong>.
+        El código debe escribirse en <strong>Python</strong>.
       </Alert>
 
       <TextField
@@ -79,17 +79,17 @@ export default function ProgramacionEditor({
 
       <Divider sx={{ my: 2 }} />
 
-      {/* ⭐ SECCIÓN DE TESTS CON INDICADOR */}
+      {/*  SECCIÓN DE TESTS CON INDICADOR */}
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <Typography variant="h6">Tests Automatizados</Typography>
           
-          {/* ⭐ ICONO DE INFORMACIÓN */}
+          {/*  ICONO DE INFORMACIÓN */}
           <Tooltip 
             title={
               <Box sx={{ p: 1 }}>
                 <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                  ℹ️ Importante: Balance de Pesos
+                  Importante: Balance de Pesos
                 </Typography>
                 <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
                   La <strong>suma de los pesos de todos los tests</strong> debe ser igual a los <strong>puntos del ejercicio</strong>.
@@ -112,7 +112,7 @@ export default function ProgramacionEditor({
           Define los casos de prueba que se ejecutarán para validar el código del alumno.
         </Typography>
 
-        {/* ⭐ INDICADOR DE BALANCE */}
+        {/*  INDICADOR DE BALANCE */}
         {puntosEjercicio > 0 && (
           <Paper 
             elevation={0}
@@ -126,7 +126,7 @@ export default function ProgramacionEditor({
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
               <Typography variant="subtitle1" fontWeight="bold">
-                {isBalanceado ? '✅' : '⚠️'} Balance de Puntaje
+                Balance de Puntaje
               </Typography>
             </Box>
             
@@ -158,10 +158,10 @@ export default function ProgramacionEditor({
                 sx={{ color: isBalanceado ? 'success.main' : (diferencia === 0 ? 'text.secondary' : 'warning.main') }}
               >
                 {isBalanceado 
-                  ? '✅ Balanceado correctamente' 
+                  ? 'Balanceado correctamente' 
                   : diferencia === 0 
                     ? 'Configura los puntos del ejercicio primero'
-                    : `${diferencia > 0 ? '⚠️ Faltan' : '⚠️ Sobran'} ${Math.abs(diferencia)} punto${Math.abs(diferencia) !== 1 ? 's' : ''}`
+                    : `${diferencia > 0 ? 'Faltan' : 'Sobran'} ${Math.abs(diferencia)} punto${Math.abs(diferencia) !== 1 ? 's' : ''}`
                 }
               </Typography>
               
@@ -194,7 +194,7 @@ export default function ProgramacionEditor({
         )}
       </Box>
 
-      {/* ⭐ LISTA DE TESTS */}
+      {/*  LISTA DE TESTS */}
       {tests.map((t, i) => (
         <Box 
           key={i} 
@@ -211,7 +211,7 @@ export default function ProgramacionEditor({
               Test {i + 1}
             </Typography>
             
-            {/* ⭐ Mostrar peso visual */}
+            {/*  Mostrar peso visual */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Typography variant="caption" sx={{ color: '#666', fontWeight: 600 }}>
                 Peso: {t.weight || 1} pt{(t.weight || 1) !== 1 ? 's' : ''}

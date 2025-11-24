@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Box, Button, Typography, Alert, Paper, CircularProgress, Divider, Chip } from "@mui/material";
 
 export default function ProgrammingResolver({ params }: { params: Promise<{ id: string }> }) {
-  // ⭐ CORRECCIÓN: Unwrap la promesa con React.use()
   const resolvedParams = use(params);
   const ejercicioId = resolvedParams.id;
   
@@ -93,30 +92,30 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
               }
             );
             
-            console.log('✅ Respuesta guardada en la actividad');
+            console.log('Respuesta guardada en la actividad');
             
-            // ⭐ NUEVO: Avanzar al siguiente ejercicio
+            //  NUEVO: Avanzar al siguiente ejercicio
             if (currentStep !== null) {
               const nextStep = parseInt(currentStep) + 1;
               sessionStorage.setItem('current_step', String(nextStep));
-              console.log('➡️ Avanzando al ejercicio:', nextStep + 1);
+              console.log('Avanzando al ejercicio:', nextStep + 1);
             }
           }
         } catch (err) {
-          console.error('⚠️ Error guardando respuesta en actividad:', err);
+          console.error('Error guardando respuesta en actividad:', err);
         }
   
-        alert('✅ Código guardado correctamente. Redirigiendo...');
+        alert('Código guardado correctamente. Redirigiendo...');
         setTimeout(() => {
           router.push(returnTo);
         }, 1500);
       } else {
-        alert('✅ Intento guardado exitosamente');
+        alert('Intento guardado exitosamente');
       }
       
     } catch (error: any) {
       setOutput(`Error: ${error.message}`);
-      alert('❌ Error al guardar: ' + error.message);
+      alert('Error al guardar: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -168,7 +167,7 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
             disabled={loading || !code.trim()}
             sx={{ flex: 1 }}
           >
-            {loading ? <CircularProgress size={20} /> : '▶️ Ejecutar (no guarda)'}
+            {loading ? <CircularProgress size={20} /> : 'Ejecutar (no guarda)'}
           </Button>
           
           <Button 
@@ -181,7 +180,7 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
               '&:hover': { bgcolor: '#1B5E20' }
             }}
           >
-            {loading ? <CircularProgress size={20} /> : '💾 Guardar intento'}
+            {loading ? <CircularProgress size={20} /> : 'Guardar intento'}
           </Button>
         </Box>
 
@@ -195,7 +194,7 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
             }}
           >
             <Typography variant="h6" sx={{ color: '#4EC9B0', mb: 2 }}>
-              📊 Resultados de la Ejecución
+              Resultados de la Ejecución
             </Typography>
             
             {(() => {
@@ -231,7 +230,7 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
                       {result.runResult.run.stderr && (
                         <Box sx={{ mb: 2 }}>
                           <Typography variant="subtitle2" sx={{ color: '#F85149', mb: 1 }}>
-                            ⚠️ Errores:
+                            Errores:
                           </Typography>
                           <Paper 
                             sx={{ 
@@ -276,7 +275,7 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
                                       mb: 0.5
                                     }}
                                   >
-                                    {test.passed ? '✅ Test Pasado' : '❌ Test Fallado'}
+                                    {test.passed ? 'Test Pasado' : 'Test Fallado'}
                                   </Typography>
                                   <Typography 
                                     variant="caption" 
@@ -284,7 +283,7 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
                                   >
                                     Esperado: "{test.expected?.trim()}" | Obtenido: "{test.got?.trim()}"
                                   </Typography>
-                                  {/* ⭐ MOSTRAR PESO */}
+                                  {/*  MOSTRAR PESO */}
                                   <Typography 
                                     variant="caption" 
                                     sx={{ color: '#8B949E', display: 'block', mt: 0.5 }}
@@ -305,7 +304,7 @@ export default function ProgrammingResolver({ params }: { params: Promise<{ id: 
                             ))}
                           </Box>
                           
-                          {/* ⭐ Score total CON PUNTAJE REAL */}
+                          {/*  Score total CON PUNTAJE REAL */}
                           <Box sx={{ mt: 2, p: 2, bgcolor: '#0D1117', borderRadius: 1, textAlign: 'center' }}>
                             <Typography variant="h4" sx={{ color: result.score === 100 ? '#3FB950' : '#FFA657', fontWeight: 700 }}>
                               {result.puntajeObtenido || 0} / {result.puntajeMaximo || 0} puntos
