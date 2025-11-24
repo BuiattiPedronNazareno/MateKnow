@@ -41,8 +41,8 @@ export class ProgrammingController {
         runResult, 
         tests: detail, 
         score,
-        puntajeObtenido, // ⭐ Agregar
-        puntajeMaximo    // ⭐ Agregar
+        puntajeObtenido, 
+        puntajeMaximo  
       };
     }
   
@@ -53,7 +53,7 @@ export class ProgrammingController {
       lenguaje: dto.lenguaje,
       runResult,
       tests: detail,
-      score: puntajeObtenido, // ⭐ Guardar puntaje real, no porcentaje
+      score: puntajeObtenido, 
     });
   
     return { 
@@ -61,8 +61,8 @@ export class ProgrammingController {
       runResult, 
       tests: detail, 
       score,
-      puntajeObtenido, // ⭐ Agregar
-      puntajeMaximo    // ⭐ Agregar
+      puntajeObtenido, 
+      puntajeMaximo  
     };
   }
 

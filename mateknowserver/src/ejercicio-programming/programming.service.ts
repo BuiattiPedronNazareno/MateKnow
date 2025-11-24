@@ -137,8 +137,7 @@ export class ProgrammingService {
         });
       }
     }
-
-    // ⭐ CÁLCULO: Puntaje directo = suma de pesos de tests pasados
+    
     const totalWeight = testCases.reduce((s, x) => s + (x.weight ?? 1), 0);
     const passedWeight = tests.reduce((s, tr) => s + (tr.passed ? (tr.weight ?? 1) : 0), 0);
     
