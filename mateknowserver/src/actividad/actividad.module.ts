@@ -4,8 +4,12 @@ import { ActividadController } from './actividad.controller';
 import { ActividadPublicController } from './actividad-public.controller';
 import { SupabaseService } from '../lib/supabase.service';
 import { RankingGateway } from './ranking.gateway';
+import { ProgrammingModule } from '../ejercicio-programming/programming.module';
 
 @Module({
+  imports: [
+    ProgrammingModule
+  ],
   controllers: [
     ActividadController,
     ActividadPublicController
