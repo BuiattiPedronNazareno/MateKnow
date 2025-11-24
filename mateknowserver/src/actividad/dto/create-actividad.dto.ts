@@ -1,6 +1,7 @@
-import { IsString, IsBoolean, IsOptional, IsArray, ValidateNested, IsISO8601, IsNumber, IsUUID } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsArray, ValidateNested, IsISO8601, IsNumber, IsUUID, ArrayMinSize } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { Type } from 'class-transformer';
+import { ProgrammingTestCaseInput, ProgrammingMetadata } from '../../ejercicio-programming/dto/create-programming-exercise.dto';
 
 export class CreateEjercicioDto {
   @IsOptional()
@@ -12,7 +13,9 @@ export class CreateEjercicioDto {
   enunciado?: string;
 
   @IsOptional()
-  metadata?: any;
+  @ValidateNested()
+  @Type(() => ProgrammingMetadata)
+  metadata?: ProgrammingMetadata | any;
 
   @IsOptional()
   @IsNumber()
@@ -20,10 +23,17 @@ export class CreateEjercicioDto {
 
   @IsOptional()
   @IsString()
-  tipo?: 'multiple-choice' | 'abierta' | 'verdadero-falso';
+  tipo?: 'multiple-choice' | 'abierta' | 'verdadero-falso' | 'programming';
 
   @IsOptional()
   opciones?: { texto: string; is_correcta?: boolean }[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Debe haber al menos un caso de prueba para ejercicios de programación' })
+  @ValidateNested({ each: true })
+  @Type(() => ProgrammingTestCaseInput)
+  tests?: ProgrammingTestCaseInput[];
 }
 
 export class CreateActividadDto {

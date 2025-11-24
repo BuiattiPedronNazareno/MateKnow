@@ -19,13 +19,12 @@ export const programmingService = {
     })).json(),
 
   saveAttempt: async (payload: any) => {
-    // ⭐ IMPORTANTE: NO incluir usuarioId, el backend lo obtiene del token
-    const { usuarioId, ...cleanPayload } = payload; // Eliminar usuarioId si existe
+    const { usuarioId, ...cleanPayload } = payload; 
     
     return (await fetch(`${API}/programming/attempts`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(cleanPayload), // ⭐ Enviar sin usuarioId
+      body: JSON.stringify(cleanPayload), 
     })).json();
   },
 

@@ -185,11 +185,11 @@ export default function DetalleClasePage() {
     setHistorialLoading(true);
     setHistorialData([]);
     try {
-      // Pasamos claseId (variable del componente) y actividadId
+      // Usamos el servicio para obtener el historial
       const res = await actividadService.getHistorialIntentos(claseId, actividadId);
-      setHistorialData(res.intentos);
+      setHistorialData(res.intentos || []);
     } catch (err) {
-      console.error(err);
+      console.error("Error cargando historial:", err);
     } finally {
       setHistorialLoading(false);
     }
@@ -199,14 +199,26 @@ export default function DetalleClasePage() {
     setCrearEjercicioLoading(true);
     setCrearEjercicioError('');
     try {
-      const res = await ejercicioService.crearEjercicio(payload);
-      const newEjercicioId = res?.ejercicio?.id;
+      // CORRECCIÓN: Verificar si ya trae ID (caso programación)
+      let newEjercicioId = payload.id;
+
+      // Solo llamamos a crearEjercicio si NO tiene ID (ejercicios normales)
+      if (!newEjercicioId) {
+        const res = await ejercicioService.crearEjercicio(payload);
+        newEjercicioId = res?.ejercicio?.id;
+      }
+
       if (crearEjercicioAttachActividadId && newEjercicioId) {
         try {
           const all = await actividadService.listarActividades(claseId);
           const current = (all.actividades || []).find((x: any) => x.id === crearEjercicioAttachActividadId);
           const prevIds = (current?.ejercicios || []).map((e: any) => e.id);
-          await actividadService.editarActividad(claseId, crearEjercicioAttachActividadId, { ejercicioIds: [...prevIds, newEjercicioId] });
+          
+          // Evitar duplicados al vincular
+          if (!prevIds.includes(newEjercicioId)) {
+             await actividadService.editarActividad(claseId, crearEjercicioAttachActividadId, { ejercicioIds: [...prevIds, newEjercicioId] });
+          }
+
           setOpenCrearEjercicioModal(false);
           setCrearEjercicioAttachActividadId(null);
           await loadActividades();
@@ -218,11 +230,13 @@ export default function DetalleClasePage() {
       setOpenCrearEjercicioModal(false);
       await loadActividades();
     } catch (err: any) {
+      console.error(err);
       setCrearEjercicioError(err.response?.data?.message || 'Error al crear ejercicio');
     } finally {
       setCrearEjercicioLoading(false);
     }
   };
+
   const [editingActividadId, setEditingActividadId] = useState<string | null>(null);
 
   const isoToDatetimeLocal = (iso?: string) => {
@@ -901,6 +915,7 @@ export default function DetalleClasePage() {
                       }}
                       sx={{ cursor: 'pointer' }}
                     >
+
                       <ListItemText
                         primary={a.nombre}
                         secondaryTypographyProps={{ component: 'div' }}
@@ -909,7 +924,7 @@ export default function DetalleClasePage() {
                             <Typography variant="body2" color="text.secondary">{a.descripcion}</Typography>
 
                             {/* ESTADÍSTICAS DE MEJOR DESEMPEÑO */}
-                            {a.intento && (
+                            {!clase.isProfesor && a.intento && (
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1, bgcolor: 'rgba(0,0,0,0.03)', width: 'fit-content', px: 1, py: 0.5, borderRadius: 1 }}>
 
                                 {/* RACHA */}
@@ -1413,7 +1428,16 @@ export default function DetalleClasePage() {
             Historial de Intentos
           </DialogTitle>
 
-          <DialogContent sx={{ pt: 2, px: 0 }}>
+          <DialogContent 
+            sx={{ 
+              pt: 2, 
+              px: 0,
+              // Estilos para ocultar scrollbar manteniendo funcionalidad
+              scrollbarWidth: 'none', // Firefox
+              '&::-webkit-scrollbar': { display: 'none' }, // Chrome, Safari, Edge
+              msOverflowStyle: 'none', // ✅ CORREGIDO: camelCase para IE/Edge
+            }}
+          >
             {historialLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                 <CircularProgress size={30} sx={{ color: '#8B4513' }} />
@@ -1433,7 +1457,6 @@ export default function DetalleClasePage() {
                       divider
                       onClick={() => {
                         // Navegación al modo revisión
-                        // IMPORTANTE: 'historialActividadId' debe tener el ID de la actividad actual
                         router.push(`/actividades/${claseId}/realizar/${historialActividadId}?mode=revision&intentoId=${intento.id}`);
                         setOpenHistorialDialog(false);
                       }}
@@ -1462,7 +1485,14 @@ export default function DetalleClasePage() {
                         }
                         secondary={
                           <Typography variant="caption" color="text.secondary">
-                            {new Date(intento.finished_at || intento.created_at).toLocaleString()}
+                            {new Date(intento.finished_at || intento.created_at).toLocaleString('es-AR', { 
+                              hour12: false,
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })} hs
                           </Typography>
                         }
                       />
@@ -1486,7 +1516,6 @@ export default function DetalleClasePage() {
             </Button>
           </DialogActions>
         </Dialog>
-
 
         <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}><MenuItem onClick={() => { if (selectedAnuncio) handleOpenAnuncioDialog(selectedAnuncio); handleMenuClose(); }}><Edit sx={{ mr: 1 }} /> Editar</MenuItem><MenuItem onClick={handleDeleteAnuncio}><Delete sx={{ mr: 1 }} /> Eliminar</MenuItem></Menu>
 

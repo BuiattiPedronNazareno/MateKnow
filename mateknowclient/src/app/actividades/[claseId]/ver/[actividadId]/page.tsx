@@ -21,6 +21,7 @@ import {
   DialogActions,
   IconButton,
   Stack,
+  Alert,
 } from '@mui/material';
 import { 
   Delete,
@@ -95,16 +96,21 @@ export default function ActividadVerPage() {
     }
   };
 
-  // ✅ FUNCIÓN CORREGIDA - Solo vincula, NO crea
   const handleCrearEjercicioSubmit = async (payload: any) => {
     setCrearEjercicioLoading(true);
     setCrearEjercicioError('');
     
     try {
-      // ✅ SI PAYLOAD TIENE 'id', significa que el ejercicio YA FUE CREADO por EjercicioForm
-      // Solo necesitamos vincularlo a la actividad
-      if (payload.id) {
-        console.log('🔗 Ejercicio ya creado, solo vinculando:', payload.id);
+      // CASO 1: Ejercicio de programación (YA debe tener ID)
+      // O si vemos que NO tiene opciones, asumimos que era de programación y algo falló
+      const esProgramacion = (payload.opciones && payload.opciones.length === 0);
+
+      if (payload.id || esProgramacion) {
+        if (!payload.id) {
+            throw new Error("Error interno: Se intentó vincular un ejercicio de programación sin ID. Verifique la creación del ejercicio.");
+        }
+
+        console.log('🔗 Ejercicio ya creado (programming), solo vinculando:', payload.id);
         
         const prevIds = (actividad.ejercicios || []).map((e: any) => e.id);
         const newIds = [...prevIds, payload.id];
@@ -114,12 +120,12 @@ export default function ActividadVerPage() {
         setOpenCrearEjercicioModal(false);
         await loadData();
         
-        console.log('✅ Ejercicio vinculado exitosamente');
+        console.log('Ejercicio vinculado exitosamente');
         return;
       }
 
-      // ❌ Si no tiene ID, es un ejercicio normal que necesitamos crear primero
-      console.log('📝 Creando ejercicio NORMAL');
+      // CASO 2: Ejercicio normal (multiple choice, latex, etc.)
+      console.log('Creando ejercicio NORMAL');
       
       const res = await ejercicioService.crearEjercicio(payload);
       const newEjercicioId = res?.ejercicio?.id;
@@ -136,7 +142,7 @@ export default function ActividadVerPage() {
         console.log('✅ Ejercicio creado y vinculado exitosamente');
       }
     } catch (err: any) {
-      console.error('❌ Error al crear ejercicio:', err);
+      console.error('Error al crear ejercicio:', err);
       setCrearEjercicioError(err.response?.data?.message || err.message || 'Error al crear ejercicio');
     } finally {
       setCrearEjercicioLoading(false);
@@ -357,11 +363,14 @@ export default function ActividadVerPage() {
       <Dialog open={openCrearEjercicioModal} onClose={() => setOpenCrearEjercicioModal(false)} fullWidth maxWidth="md">
         <DialogTitle>Crear y Agregar Ejercicio</DialogTitle>
         <DialogContent>
+          {crearEjercicioError && (
+              <Alert severity="error" sx={{ mb: 2 }}>{crearEjercicioError}</Alert>
+          )}
           <EjercicioForm
             onSubmit={handleCrearEjercicioSubmit}
             submitButtonText="Crear y agregar"
             loading={crearEjercicioLoading}
-            error={crearEjercicioError}
+            error={''} // El error lo manejamos arriba con Alert
             onCancel={() => setOpenCrearEjercicioModal(false)}
           />
         </DialogContent>

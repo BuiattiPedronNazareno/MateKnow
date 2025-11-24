@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { SupabaseService } from '../lib/supabase.service';
+import { ProgrammingService } from '../ejercicio-programming/programming.service';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { UpdateActividadDto } from './dto/update-actividad.dto';
 import { RespuestaParcialDto } from './dto/respuesta-parcial.dto';
@@ -19,7 +20,8 @@ export class ActividadService {
 
   constructor(
     private supabaseService: SupabaseService,
-    private rankingGateway: RankingGateway
+    private rankingGateway: RankingGateway,
+    private programmingService: ProgrammingService,
   ) { }
 
   // --- HELPERS ---
@@ -109,25 +111,49 @@ export class ActividadService {
             }
           }
 
-          const payload: any = {
-            enunciado: (e as any).enunciado || (e as any).titulo || '',
-            puntos: (e as any).puntos ?? 1,
-            metadata: Object.keys(metadataObj).length ? metadataObj : null,
-            creado_por: userId
-          };
-          if (tipoIdForEjercicio) payload.tipo_id = tipoIdForEjercicio;
+          // Decide if this ejercicio is of programming type (either by tipo key or by presence of tests)
+          const isProgramming = (e as any).tipo === 'programming' || (e as any).tests && Array.isArray((e as any).tests) && (e as any).tests.length > 0;
 
-          const { data: ej, error: ejError } = await supabase.from('ejercicio').insert(payload).select().single();
-          if (ejError) {
-            throw new BadRequestException('Error al crear ejercicio: ' + ejError.message);
-          }
-          createdEjercicioIds.push(ej.id);
+          if (isProgramming) {
+            // Use ProgrammingService to create exercise + testcases
+            // tipoIdForEjercicio should be resolved above; if not, try to use provided tipoId field
+            const tipoIdToUse = tipoIdForEjercicio || (e as any).tipo_id || (e as any).tipoId || null;
+            if (!tipoIdToUse) {
+              throw new BadRequestException('No se pudo resolver el tipo de ejercicio para programming');
+            }
 
-          if ((e as any).opciones && Array.isArray((e as any).opciones) && (e as any).opciones.length > 0) {
-            const opcionesRows = (e as any).opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: !!o.is_correcta }));
-            const { error: optError } = await supabase.from('opcion_ejercicio').insert(opcionesRows);
-            if (optError) {
-              throw new BadRequestException('Error al crear opciones de ejercicio: ' + optError.message);
+            const prog = await this.programmingService.createProgrammingExercise({
+              tipoId: tipoIdToUse,
+              actividad_id: actividadId,
+              enunciado: (e as any).enunciado || (e as any).titulo || '',
+              puntos: (e as any).puntos ?? 1,
+              metadata: Object.keys(metadataObj).length ? metadataObj : null,
+              creadoPor: userId,
+              tests: (e as any).tests || []
+            });
+
+            createdEjercicioIds.push(prog.id);
+          } else {
+            const payload: any = {
+              enunciado: (e as any).enunciado || (e as any).titulo || '',
+              puntos: (e as any).puntos ?? 1,
+              metadata: Object.keys(metadataObj).length ? metadataObj : null,
+              creado_por: userId
+            };
+            if (tipoIdForEjercicio) payload.tipo_id = tipoIdForEjercicio;
+
+            const { data: ej, error: ejError } = await supabase.from('ejercicio').insert(payload).select().single();
+            if (ejError) {
+              throw new BadRequestException('Error al crear ejercicio: ' + ejError.message);
+            }
+            createdEjercicioIds.push(ej.id);
+
+            if ((e as any).opciones && Array.isArray((e as any).opciones) && (e as any).opciones.length > 0) {
+              const opcionesRows = (e as any).opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: !!o.is_correcta }));
+              const { error: optError } = await supabase.from('opcion_ejercicio').insert(opcionesRows);
+              if (optError) {
+                throw new BadRequestException('Error al crear opciones de ejercicio: ' + optError.message);
+              }
             }
           }
         }
@@ -324,21 +350,42 @@ export class ActividadService {
             if (data) tipoId = data.id;
           }
 
-          const payload: any = {
-            enunciado: e.enunciado || e.titulo || '',
-            puntos: e.puntos ?? 1,
-            metadata: metadataObj,
-            creado_por: userId,
-            tipo_id: tipoId
-          };
+          // If it's a programming ejercicio, delegate to ProgrammingService
+          const isProgramming = e.tipo === 'programming' || (e as any).tests && Array.isArray((e as any).tests) && (e as any).tests.length > 0;
+          if (isProgramming) {
+            const tipoIdToUse = tipoId || (e as any).tipo_id || (e as any).tipoId || null;
+            if (!tipoIdToUse) {
+              throw new BadRequestException('No se pudo resolver el tipo de ejercicio para programming (update)');
+            }
 
-          const { data: ej } = await supabase.from('ejercicio').insert(payload).select().single();
-          if (ej) {
-            createdEjercicioIds.push(ej.id);
-            // Insertar opciones si hay
-            if (e.opciones?.length) {
-              const opts = e.opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: o.is_correcta }));
-              await supabase.from('opcion_ejercicio').insert(opts);
+            const prog = await this.programmingService.createProgrammingExercise({
+              tipoId: tipoIdToUse,
+              actividad_id: actividadId,
+              enunciado: e.enunciado || e.titulo || '',
+              puntos: e.puntos ?? 1,
+              metadata: metadataObj,
+              creadoPor: userId,
+              tests: (e as any).tests || []
+            });
+
+            if (prog) createdEjercicioIds.push(prog.id);
+          } else {
+            const payload: any = {
+              enunciado: e.enunciado || e.titulo || '',
+              puntos: e.puntos ?? 1,
+              metadata: metadataObj,
+              creado_por: userId,
+              tipo_id: tipoId
+            };
+
+            const { data: ej } = await supabase.from('ejercicio').insert(payload).select().single();
+            if (ej) {
+              createdEjercicioIds.push(ej.id);
+              // Insertar opciones si hay
+              if (e.opciones?.length) {
+                const opts = e.opciones.map((o: any) => ({ ejercicio_id: ej.id, texto: o.texto, is_correcta: o.is_correcta }));
+                await supabase.from('opcion_ejercicio').insert(opts);
+              }
             }
           }
         }
@@ -578,7 +625,7 @@ export class ActividadService {
     respuestas = respuestas.filter(r => r.ejercicioId !== dto.ejercicioId);
     respuestas.push({
       ejercicioId: dto.ejercicioId,
-      respuesta: dto.respuesta, 
+      respuesta: dto.respuesta,
       timestamp: new Date().toISOString()
     });
 
@@ -703,90 +750,90 @@ export class ActividadService {
     }
 
     // ✅ LÓGICA DE CALIFICACIÓN MEJORADA
- // Reemplaza la sección de calificación en el método finalizarIntento
-// Desde la línea donde dice: (ejercicios || []).forEach((item: any) => {
+    // Reemplaza la sección de calificación en el método finalizarIntento
+    // Desde la línea donde dice: (ejercicios || []).forEach((item: any) => {
 
-  // ✅ SOLUCIÓN: Usar for...of en lugar de forEach
-  for (const item of ejercicios || []) {
-    // ✅ FIX: Extraer el ejercicio correctamente (puede venir como objeto o array)
-    let ej: any;
-    if (Array.isArray(item.ejercicio)) {
-      ej = item.ejercicio[0]; // Si es array, tomamos el primer elemento
-    } else {
-      ej = item.ejercicio; // Si es objeto, lo usamos directamente
-    }
-
-    if (!ej) continue;
-
-    const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
-
-    if (!respuestaUser) continue;
-
-    let isCorrect = false;
-
-    // ✅ DETECTAR TIPO DE EJERCICIO
-    let tipoKey = 'desconocido';
-    
-    if (ej.tipo_ejercicio) {
-      if (Array.isArray(ej.tipo_ejercicio) && ej.tipo_ejercicio.length > 0) {
-        tipoKey = ej.tipo_ejercicio[0].key;
-      } else if (ej.tipo_ejercicio.key) {
-        tipoKey = ej.tipo_ejercicio.key;
+    // ✅ SOLUCIÓN: Usar for...of en lugar de forEach
+    for (const item of ejercicios || []) {
+      // ✅ FIX: Extraer el ejercicio correctamente (puede venir como objeto o array)
+      let ej: any;
+      if (Array.isArray(item.ejercicio)) {
+        ej = item.ejercicio[0]; // Si es array, tomamos el primer elemento
+      } else {
+        ej = item.ejercicio; // Si es objeto, lo usamos directamente
       }
-    }
 
-    // ✅ CASO 1: EJERCICIO DE PROGRAMACIÓN
-    if (tipoKey === 'programming') {
-      const respuesta = respuestaUser.respuesta;
-      
-      // La respuesta es un objeto: { codigo, score, tests, lenguaje, ... }
-      if (respuesta && typeof respuesta === 'object' && respuesta.score !== undefined) {
-        const scorePercent = Number(respuesta.score) || 0;
-        const puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
-        
-        this.logger.log(`✅ Programming - Ejercicio ${ej.id}: ${scorePercent}% = ${puntosObtenidos}/${ej.puntos} pts`);
-        puntajeTotal += puntosObtenidos;
-        
-        // Considerar correcto si score >= 100%
-        if (scorePercent >= 100) {
+      if (!ej) continue;
+
+      const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
+
+      if (!respuestaUser) continue;
+
+      let isCorrect = false;
+
+      // ✅ DETECTAR TIPO DE EJERCICIO
+      let tipoKey = 'desconocido';
+
+      if (ej.tipo_ejercicio) {
+        if (Array.isArray(ej.tipo_ejercicio) && ej.tipo_ejercicio.length > 0) {
+          tipoKey = ej.tipo_ejercicio[0].key;
+        } else if (ej.tipo_ejercicio.key) {
+          tipoKey = ej.tipo_ejercicio.key;
+        }
+      }
+
+      // ✅ CASO 1: EJERCICIO DE PROGRAMACIÓN
+      if (tipoKey === 'programming') {
+        const respuesta = respuestaUser.respuesta;
+
+        // La respuesta es un objeto: { codigo, score, tests, lenguaje, ... }
+        if (respuesta && typeof respuesta === 'object' && respuesta.score !== undefined) {
+          const scorePercent = Number(respuesta.score) || 0;
+          const puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
+
+          this.logger.log(`✅ Programming - Ejercicio ${ej.id}: ${scorePercent}% = ${puntosObtenidos}/${ej.puntos} pts`);
+          puntajeTotal += puntosObtenidos;
+
+          // Considerar correcto si score >= 100%
+          if (scorePercent >= 100) {
+            isCorrect = true;
+          }
+        } else {
+          this.logger.warn(`⚠️ Ejercicio de programación ${ej.id} sin respuesta válida`);
+        }
+
+        // ✅ Actualizar racha
+        if (isCorrect) {
+          currentStreak++;
+          if (currentStreak > maxStreak) maxStreak = currentStreak;
+        } else {
+          currentStreak = 0;
+        }
+
+        continue; // Pasar al siguiente ejercicio
+      }
+
+      // ✅ CASO 2: EJERCICIOS NORMALES (Multiple Choice, True/False, etc.)
+      if (ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
+        const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
+
+        if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
+          puntajeTotal += Number(ej.puntos);
+
+          this.logger.log(`✅ Multiple Choice - Ejercicio ${ej.id}: ${ej.puntos} pts`);
+
           isCorrect = true;
         }
-      } else {
-        this.logger.warn(`⚠️ Ejercicio de programación ${ej.id} sin respuesta válida`);
       }
-      
-      // ✅ Actualizar racha
+
+      // Cálculo de Racha
       if (isCorrect) {
         currentStreak++;
         if (currentStreak > maxStreak) maxStreak = currentStreak;
       } else {
         currentStreak = 0;
       }
-      
-      continue; // Pasar al siguiente ejercicio
     }
-
-    // ✅ CASO 2: EJERCICIOS NORMALES (Multiple Choice, True/False, etc.)
-    if (ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
-      const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
-
-      if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
-        puntajeTotal += Number(ej.puntos);
-        
-        this.logger.log(`✅ Multiple Choice - Ejercicio ${ej.id}: ${ej.puntos} pts`);
-
-        isCorrect = true;
-      }
-    }
-
-    // Cálculo de Racha
-    if (isCorrect) {
-      currentStreak++;
-      if (currentStreak > maxStreak) maxStreak = currentStreak;
-    } else {
-      currentStreak = 0;
-    }
-  }
 
     this.logger.log(`📊 Puntaje total calculado: ${puntajeTotal}`);
 
@@ -982,21 +1029,21 @@ export class ActividadService {
         respuesta: '',
         puntajeManual: puntajeAsignado,
         corregido: true,
-        correctedAt: now // Guardamos la fecha
+        correctedAt: now
       });
     } else {
       respuestas[respuestaIndex] = {
         ...respuestas[respuestaIndex],
         puntajeManual: puntajeAsignado,
         corregido: true,
-        correctedAt: now // Guardamos la fecha
+        correctedAt: now
       };
     }
 
-    // 3. Recalcular el puntaje TOTAL
+    // 3. Recalcular el puntaje TOTAL (Corrección para incluir Programming)
     const { data: ejercicios } = await supabase
       .from('actividad_ejercicio')
-      .select('ejercicio:ejercicio_id(id, puntos, tipo_id, opcion_ejercicio(id, is_correcta))')
+      .select('ejercicio:ejercicio_id(id, puntos, tipo_id, tipo_ejercicio(key), opcion_ejercicio(id, is_correcta))')
       .eq('actividad_id', actividadId);
 
     let nuevoPuntajeTotal = 0;
@@ -1006,12 +1053,37 @@ export class ActividadService {
       const respUser = respuestas.find((r: any) => r.ejercicioId === ej.id);
 
       if (respUser) {
-        if (respUser.puntajeManual !== undefined) {
+        // A. Prioridad: Puntaje Manual (si existe y no es null)
+        if (respUser.puntajeManual !== undefined && respUser.puntajeManual !== null) {
           nuevoPuntajeTotal += Number(respUser.puntajeManual);
-        } else {
-          const opcionCorrecta = ej.opcion_ejercicio?.find((o: any) => o.is_correcta);
-          if (opcionCorrecta && respUser.respuesta === opcionCorrecta.id) {
-            nuevoPuntajeTotal += Number(ej.puntos);
+        } 
+        else {
+          // B. Cálculo Automático
+          
+          // Detectar tipo de ejercicio
+          let tipoKey = 'desconocido';
+          if (ej.tipo_ejercicio) {
+             if (Array.isArray(ej.tipo_ejercicio) && ej.tipo_ejercicio.length > 0) tipoKey = ej.tipo_ejercicio[0].key;
+             else if (ej.tipo_ejercicio.key) tipoKey = ej.tipo_ejercicio.key;
+          }
+
+          if (tipoKey === 'programming') {
+             // B1. Caso Programación: Leer score del objeto JSON respuesta
+             const respuesta = respUser.respuesta;
+             // La respuesta suele ser { codigo: "...", score: 100, ... }
+             if (respuesta && typeof respuesta === 'object' && respuesta.score !== undefined) {
+                const scorePercent = Number(respuesta.score) || 0;
+                // Calculamos proporcional: (Porcentaje / 100) * PuntosTotales
+                const puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
+                nuevoPuntajeTotal += puntosObtenidos;
+             }
+          } else {
+             // B2. Caso Clásico (Multiple Choice / V-F): Comparar ID con opción correcta
+             const opcionCorrecta = ej.opcion_ejercicio?.find((o: any) => o.is_correcta);
+             // Se compara como string para evitar errores de tipo
+             if (opcionCorrecta && String(respUser.respuesta) === String(opcionCorrecta.id)) {
+                nuevoPuntajeTotal += Number(ej.puntos);
+             }
           }
         }
       }
