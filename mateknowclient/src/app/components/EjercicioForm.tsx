@@ -70,7 +70,7 @@ export default function EjercicioForm({
   const [fetchError, setFetchError] = useState("");
   const [tipoSeleccionado, setTipoSeleccionado] =
     useState<TipoEjercicio | null>(null);
-  const [metadata, setMetadata] = useState<any>({});
+  const [metadata, setMetadata] = useState<any>({ lenguaje: 'python' });
   const [tests, setTests] = useState([]);
 
   useEffect(() => {

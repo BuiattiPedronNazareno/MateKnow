@@ -719,7 +719,7 @@ export default function RealizarActividadPage() {
                   <Box sx={{ mb: 2 }}>
                     <Alert severity="info" sx={{ mb: 2 }}>
                       <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
-                        Ejercicio de Programación
+                        Ejercicio de Programación (en Python)
                       </Typography>
                       <Typography variant="body2">
                         Este ejercicio se resuelve en un editor de código especializado. 

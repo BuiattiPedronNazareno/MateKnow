@@ -568,11 +568,8 @@ export class ActividadService {
   ) {
     const supabase = this.supabaseService.getClient(accessToken);
 
-    // ---------------------------------------------------------
-    // 1. NORMALIZACIÓN DE RESPUESTAS (Fix Frontend Payload)
-    // ---------------------------------------------------------
+    // 1. NORMALIZACIÓN DE RESPUESTAS
     let respuestasFinales: any[] = [];
-
     if (dto) {
       if (Array.isArray(dto)) {
         respuestasFinales = dto;
@@ -581,24 +578,15 @@ export class ActividadService {
       }
     }
 
-    // ---------------------------------------------------------
     // 1.5. SANITIZACIÓN
-    // ---------------------------------------------------------
-    // Si por error llega un array anidado [[...]], lo aplanamos.
-    // Esto convierte [[]] en [] y [[{data}]] en [{data}].
     if (respuestasFinales.length > 0 && Array.isArray(respuestasFinales[0])) {
         respuestasFinales = respuestasFinales.flat();
     }
-
-    // Filtrar basura: aseguramos que solo queden objetos válidos con ejercicioId
     respuestasFinales = respuestasFinales.filter(r => 
         r && typeof r === 'object' && !Array.isArray(r) && r.ejercicioId
     );
 
-    // ---------------------------------------------------------
-    // 2. PERSISTENCIA PREVIA (Guardar respuestas limpias)
-    // ---------------------------------------------------------
-    // Solo actualizamos si hay respuestas válidas nuevas
+    // 2. PERSISTENCIA PREVIA
     if (respuestasFinales.length > 0) {
       const { error: updateError } = await supabase
         .from('actividad_resultado')
@@ -615,16 +603,13 @@ export class ActividadService {
       }
     }
 
-    // ---------------------------------------------------------
     // 3. OBTENCIÓN DEL INTENTO
-    // ---------------------------------------------------------
     const { data: intento } = await supabase
       .from('actividad_resultado')
       .select('*, actividad:actividad_id(*)')
       .eq('id', resultadoId)
       .single();
 
-    // Si ya estaba finalizado, retornamos el resultado existente
     if (intento && intento.estado === 'finished') {
         return { 
             message: 'Evaluación ya finalizada anteriormente', 
@@ -637,46 +622,71 @@ export class ActividadService {
       throw new BadRequestException('Intento no válido');
     }
 
-    // ---------------------------------------------------------
-    // 4. CALIFICACIÓN
-    // ---------------------------------------------------------
+    // 4. CALIFICACIÓN - ✅ CON SOPORTE PARA PROGRAMACIÓN
     const { data: ejercicios } = await supabase
       .from('actividad_ejercicio')
       .select(`
         ejercicio:ejercicio_id (
-          id, puntos, tipo_id,
+          id, 
+          puntos, 
+          tipo_id,
+          tipo_ejercicio ( key ),
           opcion_ejercicio (id, texto, is_correcta)
         )
       `)
       .eq('actividad_id', intento.actividad_id);
 
     let puntajeTotal = 0;
-    // Usamos las respuestas limpias (o las de DB si el payload vino vacío)
-    let respuestasUsuario = respuestasFinales.length > 0 ? respuestasFinales : (intento.respuestas as any[]) || [];
+    let respuestasUsuario = respuestasFinales.length > 0 
+      ? respuestasFinales 
+      : (intento.respuestas as any[]) || [];
     
-    // Doble check de sanitización por si DB tenía basura vieja
     if (respuestasUsuario.length > 0 && Array.isArray(respuestasUsuario[0])) {
         respuestasUsuario = respuestasUsuario.flat();
     }
 
+    // ✅ LÓGICA DE CALIFICACIÓN MEJORADA
     (ejercicios || []).forEach((item: any) => {
       const ej = item.ejercicio;
       if (!ej) return;
 
       const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
+      if (!respuestaUser) return;
 
-      if (respuestaUser && ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
+      // ✅ DETECTAR TIPO DE EJERCICIO
+      const tipoKey = ej.tipo_ejercicio?.key || ej.tipo_ejercicio?.[0]?.key;
+
+      // ✅ CASO 1: EJERCICIO DE PROGRAMACIÓN
+      if (tipoKey === 'programming') {
+        const respuesta = respuestaUser.respuesta;
+        
+        // La respuesta es un objeto: { codigo, score, tests, lenguaje, ... }
+        if (respuesta && typeof respuesta === 'object' && respuesta.score !== undefined) {
+          const scorePercent = Number(respuesta.score) || 0;
+          const puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
+          
+          this.logger.log(`✅ Programming - Ejercicio ${ej.id}: ${scorePercent}% = ${puntosObtenidos}/${ej.puntos} pts`);
+          puntajeTotal += puntosObtenidos;
+        } else {
+          this.logger.warn(`⚠️ Ejercicio de programación ${ej.id} sin respuesta válida`);
+        }
+        return;
+      }
+
+      // ✅ CASO 2: EJERCICIOS NORMALES (Multiple Choice, True/False, etc.)
+      if (ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
         const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
         
         if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
           puntajeTotal += Number(ej.puntos);
+          this.logger.log(`✅ Multiple Choice - Ejercicio ${ej.id}: ${ej.puntos} pts`);
         }
       }
     });
 
-    // ---------------------------------------------------------
+    this.logger.log(`📊 Puntaje total calculado: ${puntajeTotal}`);
+
     // 5. CIERRE DEL INTENTO
-    // ---------------------------------------------------------
     const { data: resultadoFinal, error } = await supabase
       .from('actividad_resultado')
       .update({

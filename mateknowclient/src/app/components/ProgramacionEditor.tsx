@@ -57,21 +57,13 @@ export default function ProgramacionEditor({
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", gap: 3, pb: "2em" }}>
-      <FormControl fullWidth required>
-        <InputLabel id="lenguaje-select-label">Lenguaje de Programación</InputLabel>
-        <Select
-          labelId="lenguaje-select-label"
-          value={metadata.lenguaje ?? ""}
-          label="Lenguaje de Programación"
-          onChange={(e) => setMetadata({ ...metadata, lenguaje: e.target.value })}
-        >
-          {LENGUAJES_DISPONIBLES.map((lang) => (
-            <MenuItem key={lang.value} value={lang.value}>
-              {lang.label}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+
+      <Alert 
+        severity="info" 
+        sx={{ mb: 0, bgcolor: '#E1F5FE', color: '#0277BD', fontWeight: 500 }}
+      >
+        ℹ️ El código debe escribirse en <strong>Python</strong>.
+      </Alert>
 
       <TextField
         label="Código base / boilerplate (opcional)"
