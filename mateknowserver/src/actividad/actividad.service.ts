@@ -576,7 +576,11 @@ export class ActividadService {
 
     let respuestas = (intento.respuestas as any[]) || [];
     respuestas = respuestas.filter(r => r.ejercicioId !== dto.ejercicioId);
-    respuestas.push(dto);
+    respuestas.push({
+      ejercicioId: dto.ejercicioId,
+      respuesta: dto.respuesta, 
+      timestamp: new Date().toISOString()
+    });
 
     const { error } = await supabase
       .from('actividad_resultado')
@@ -599,11 +603,8 @@ export class ActividadService {
   ) {
     const supabase = this.supabaseService.getClient(accessToken);
 
-    // ---------------------------------------------------------
-    // 1. NORMALIZACIÓN DE RESPUESTAS (Fix Frontend Payload)
-    // ---------------------------------------------------------
+    // 1. NORMALIZACIÓN DE RESPUESTAS
     let respuestasFinales: any[] = [];
-
     if (dto) {
       if (Array.isArray(dto)) {
         respuestasFinales = dto;
@@ -612,11 +613,7 @@ export class ActividadService {
       }
     }
 
-    // ---------------------------------------------------------
     // 1.5. SANITIZACIÓN
-    // ---------------------------------------------------------
-    // Si por error llega un array anidado [[...]], lo aplanamos.
-    // Esto convierte [[]] en [] y [[{data}]] en [{data}].
     if (respuestasFinales.length > 0 && Array.isArray(respuestasFinales[0])) {
       respuestasFinales = respuestasFinales.flat();
     }
@@ -653,16 +650,13 @@ export class ActividadService {
       }
     }
 
-    // ---------------------------------------------------------
     // 3. OBTENCIÓN DEL INTENTO
-    // ---------------------------------------------------------
     const { data: intento } = await supabase
       .from('actividad_resultado')
       .select('*, actividad:actividad_id(*)')
       .eq('id', resultadoId)
       .single();
 
-    // Si ya estaba finalizado, retornamos el resultado existente
     if (intento && intento.estado === 'finished') {
       return {
         message: 'Evaluación ya finalizada anteriormente',
@@ -683,7 +677,10 @@ export class ActividadService {
       .select(`
         orden,
         ejercicio:ejercicio_id (
-          id, puntos, tipo_id,
+          id, 
+          puntos, 
+          tipo_id,
+          tipo_ejercicio ( key ),
           opcion_ejercicio (id, texto, is_correcta)
         )
       `)
@@ -693,6 +690,7 @@ export class ActividadService {
     const ejercicios = (ejerciciosRaw || []).sort((a: any, b: any) => a.orden - b.orden);
 
     let puntajeTotal = 0;
+
     let currentStreak = 0;
     let maxStreak = 0;
 
@@ -704,34 +702,95 @@ export class ActividadService {
       respuestasUsuario = respuestasUsuario.flat();
     }
 
-    (ejercicios || []).forEach((item: any) => {
-      const ej = item.ejercicio;
-      if (!ej) return;
+    // ✅ LÓGICA DE CALIFICACIÓN MEJORADA
+ // Reemplaza la sección de calificación en el método finalizarIntento
+// Desde la línea donde dice: (ejercicios || []).forEach((item: any) => {
 
-      const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
-      let isCorrect = false;
+  // ✅ SOLUCIÓN: Usar for...of en lugar de forEach
+  for (const item of ejercicios || []) {
+    // ✅ FIX: Extraer el ejercicio correctamente (puede venir como objeto o array)
+    let ej: any;
+    if (Array.isArray(item.ejercicio)) {
+      ej = item.ejercicio[0]; // Si es array, tomamos el primer elemento
+    } else {
+      ej = item.ejercicio; // Si es objeto, lo usamos directamente
+    }
 
-      if (respuestaUser && ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
-        const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
+    if (!ej) continue;
 
-        if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
-          puntajeTotal += Number(ej.puntos);
+    const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
+
+    if (!respuestaUser) continue;
+
+    let isCorrect = false;
+
+    // ✅ DETECTAR TIPO DE EJERCICIO
+    let tipoKey = 'desconocido';
+    
+    if (ej.tipo_ejercicio) {
+      if (Array.isArray(ej.tipo_ejercicio) && ej.tipo_ejercicio.length > 0) {
+        tipoKey = ej.tipo_ejercicio[0].key;
+      } else if (ej.tipo_ejercicio.key) {
+        tipoKey = ej.tipo_ejercicio.key;
+      }
+    }
+
+    // ✅ CASO 1: EJERCICIO DE PROGRAMACIÓN
+    if (tipoKey === 'programming') {
+      const respuesta = respuestaUser.respuesta;
+      
+      // La respuesta es un objeto: { codigo, score, tests, lenguaje, ... }
+      if (respuesta && typeof respuesta === 'object' && respuesta.score !== undefined) {
+        const scorePercent = Number(respuesta.score) || 0;
+        const puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
+        
+        this.logger.log(`✅ Programming - Ejercicio ${ej.id}: ${scorePercent}% = ${puntosObtenidos}/${ej.puntos} pts`);
+        puntajeTotal += puntosObtenidos;
+        
+        // Considerar correcto si score >= 100%
+        if (scorePercent >= 100) {
           isCorrect = true;
         }
+      } else {
+        this.logger.warn(`⚠️ Ejercicio de programación ${ej.id} sin respuesta válida`);
       }
-
-      // Cálculo de Racha
+      
+      // ✅ Actualizar racha
       if (isCorrect) {
         currentStreak++;
         if (currentStreak > maxStreak) maxStreak = currentStreak;
       } else {
         currentStreak = 0;
       }
-    });
+      
+      continue; // Pasar al siguiente ejercicio
+    }
 
-    // ---------------------------------------------------------
+    // ✅ CASO 2: EJERCICIOS NORMALES (Multiple Choice, True/False, etc.)
+    if (ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
+      const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
+
+      if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
+        puntajeTotal += Number(ej.puntos);
+        
+        this.logger.log(`✅ Multiple Choice - Ejercicio ${ej.id}: ${ej.puntos} pts`);
+
+        isCorrect = true;
+      }
+    }
+
+    // Cálculo de Racha
+    if (isCorrect) {
+      currentStreak++;
+      if (currentStreak > maxStreak) maxStreak = currentStreak;
+    } else {
+      currentStreak = 0;
+    }
+  }
+
+    this.logger.log(`📊 Puntaje total calculado: ${puntajeTotal}`);
+
     // 5. CIERRE DEL INTENTO
-    // ---------------------------------------------------------
     const { data: resultadoFinal, error } = await supabase
       .from('actividad_resultado')
       .update({

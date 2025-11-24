@@ -94,7 +94,7 @@ export class ActividadController {
   async finalizarIntento(
     @Param('id') resultadoId: string,
     @Body() dto: FinalizarIntentoDto,
-    @Request() req
+    @Request() req,
   ) {
     return this.actividadService.finalizarIntento(resultadoId, req.user.id, req.token, dto);
   }

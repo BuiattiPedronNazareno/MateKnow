@@ -30,6 +30,7 @@ import {
 } from "@/app/services/ejercicioService";
 
 import EjercicioLatexEditor from "@/app/components/EjercicioLatexEditor";
+import ProgramacionEditor from "@/app/components/ProgramacionEditor";
 
 interface EjercicioFormProps {
   initialData?: {
@@ -69,6 +70,8 @@ export default function EjercicioForm({
   const [fetchError, setFetchError] = useState("");
   const [tipoSeleccionado, setTipoSeleccionado] =
     useState<TipoEjercicio | null>(null);
+  const [metadata, setMetadata] = useState<any>({ lenguaje: 'python' });
+  const [tests, setTests] = useState([]);
 
   useEffect(() => {
     const loadTipos = async () => {
@@ -137,7 +140,7 @@ export default function EjercicioForm({
     setOpciones(nuevas);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const isUuid = (s?: string) =>
@@ -154,6 +157,109 @@ export default function EjercicioForm({
       return;
     }
 
+    // ==================== LÓGICA ESPECÍFICA PARA PROGRAMACIÓN ====================
+    if (tipoSeleccionado?.key === "programming") {
+      if (!metadata?.lenguaje?.trim()) {
+        setFetchError("El lenguaje es obligatorio");
+        return;
+      }
+
+      if (!tests || tests.length === 0) {
+        setFetchError("Debe agregar al menos un test");
+        return;
+      }
+
+      for (let i = 0; i < tests.length; i++) {
+        if (!(tests[i] as any).expected?.trim()) {
+          setFetchError(`El test ${i + 1} debe tener una salida esperada`);
+          return;
+        }
+      }
+
+      const puntosEjercicio = parseInt(puntos) || 1;
+      const sumaPesos = tests.reduce((sum, t: any) => sum + (t.weight || 1), 0);
+      
+      if (sumaPesos !== puntosEjercicio) {
+        setFetchError(
+          `⚠️ La suma de los pesos de los tests (${sumaPesos}) debe ser igual a los puntos del ejercicio (${puntosEjercicio}). ` +
+          `Ajusta los pesos o los puntos del ejercicio.`
+        );
+        return;
+      }  
+
+      try {
+        setFetchError("");
+        
+        console.log('📤 Datos a enviar (programming):', {
+          tipoId,
+          enunciado: enunciado.trim(),
+          puntos: parseInt(puntos) || 1,
+          metadata: {
+            lenguaje: metadata.lenguaje,
+            boilerplate: metadata.boilerplate || "",
+          },
+          tests: tests.map((t: any) => ({
+            stdin: t.stdin || "",
+            expected: t.expected,
+            weight: t.weight ?? 1,
+            timeout_seconds: t.timeout_seconds ?? 3, 
+            public: t.public ?? false,
+          })),
+        });
+
+        // ✅ USAR EL MÉTODO CORRECTO DEL SERVICIO
+        const result = await ejercicioService.crearEjercicioProgramacion({
+          tipoId,
+          enunciado: enunciado.trim(),
+          puntos: parseInt(puntos) || 1,
+          metadata: {
+            lenguaje: metadata.lenguaje,
+            boilerplate: metadata.boilerplate || "",
+          },
+          tests: tests.map((t: any) => ({
+            stdin: t.stdin || "",
+            expected: t.expected,
+            weight: t.weight ?? 1,
+            timeout_seconds: t.timeout_seconds ?? 3,
+            public: t.public ?? false,
+          })),
+        });
+
+        console.log("✅ Ejercicio de programación creado:", result);
+
+        // ✅ LLAMAR AL onSubmit CON LA ESTRUCTURA CORRECTA
+        // Pasamos TODA la info necesaria para que page.tsx pueda vincular el ejercicio
+        onSubmit({
+          id: result.ejercicio.id,
+          tipoId,
+          enunciado: enunciado.trim(),
+          puntos: parseInt(puntos) || 1,
+          isVersus: false,
+          opciones: [],
+          // ⚠️ IMPORTANTE: También pasamos metadata y tests para que page.tsx los tenga disponibles
+          metadata: {
+            lenguaje: metadata.lenguaje,
+            boilerplate: metadata.boilerplate || "",
+          },
+          tests: tests.map((t: any) => ({
+            stdin: t.stdin || "",
+            expected: t.expected,
+            weight: t.weight ?? 1,
+            timeout_seconds: t.timeout_seconds ?? 3,
+            public: t.public ?? false,
+          })),
+        } as any);
+
+        return;
+      } catch (err: any) {
+        console.error("❌ Error creating programming exercise:", err);
+        setFetchError(err.message || "Error al crear ejercicio de programación");
+        return;
+      }
+    }
+    // ==================== FIN LÓGICA PROGRAMACIÓN ====================
+
+    // VALIDACIONES PARA EJERCICIOS NORMALES
     const correctas = opciones.filter((o) => o.isCorrecta).length;
 
     if (correctas === 0) {
@@ -162,7 +268,9 @@ export default function EjercicioForm({
     }
 
     if (tipoSeleccionado?.key === "true_false" && correctas !== 1) {
-      setFetchError("En Verdadero/Falso debe haber exactamente una opción correcta");
+      setFetchError(
+        "En Verdadero/Falso debe haber exactamente una opción correcta"
+      );
       return;
     }
 
@@ -234,79 +342,92 @@ export default function EjercicioForm({
         />
       )}
 
-      <FormControlLabel
-        control={
-          <Switch
-            checked={isVersus}
-            onChange={(e) => setIsVersus(e.target.checked)}
-          />
-        }
-        label="Modo Versus"
-      />
-
-      <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
-        Opciones de respuesta
-      </Typography>
-
-      {tipoSeleccionado?.key === "true_false" ? (
-        <RadioGroup
-          value={opciones.findIndex((o) => o.isCorrecta).toString()}
-          onChange={(e) => {
-            const idx = Number(e.target.value);
-            setOpciones(
-              opciones.map((o, i) => ({ ...o, isCorrecta: i === idx }))
-            );
-          }}
-        >
-          {opciones.map((op, i) => (
-            <Box
-              key={i}
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 2,
-                p: 2,
-                border: "1px solid #ccc",
-                borderRadius: 2,
-                mb: 2,
-              }}
-            >
-              <Radio value={i.toString()} />
-              
-              <TextField
-                value={op.texto}
-                onChange={(ev) =>
-                  handleOpcionChange(i, "texto", ev.target.value)
-                }
-                fullWidth
-                placeholder={`Opción ${i + 1}`}
-              />
-            </Box>
-          ))}
-        </RadioGroup>
-      ) : (
-        opciones.map((op, i) => (
-          <OpcionField
-            key={i}
-            opcion={op}
-            index={i}
-            tipoEjercicio={tipoSeleccionado?.key || ""}
-            onChange={handleOpcionChange}
-            onRemove={handleRemoveOpcion}
-            showRemoveButton
-          />
-        ))
+      {tipoSeleccionado?.key === "programming" && (
+        <ProgramacionEditor
+          metadata={metadata}
+          setMetadata={setMetadata}
+          tests={tests}
+          setTests={setTests}
+          puntos={parseInt(puntos) || 1}
+        />
       )}
 
-      <Button
-        variant="outlined"
-        fullWidth
-        sx={{ my: 2 }}
-        onClick={handleAddOpcion}
-      >
-        + Agregar opción
-      </Button>
+      {tipoSeleccionado?.key !== "programming" && (
+        <>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isVersus}
+                onChange={(e) => setIsVersus(e.target.checked)}
+              />
+            }
+            label="Modo Versus"
+          />
 
+          <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
+            Opciones de respuesta
+          </Typography>
+
+          {tipoSeleccionado?.key === "true_false" ? (
+            <RadioGroup
+              value={opciones.findIndex((o) => o.isCorrecta).toString()}
+              onChange={(e) => {
+                const idx = Number(e.target.value);
+                setOpciones(
+                  opciones.map((o, i) => ({ ...o, isCorrecta: i === idx }))
+                );
+              }}
+            >
+              {opciones.map((op, i) => (
+                <Box
+                  key={i}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    p: 2,
+                    border: "1px solid #ccc",
+                    borderRadius: 2,
+                    mb: 2,
+                  }}
+                >
+                  <Radio value={i.toString()} />
+                  
+                  <TextField
+                    value={op.texto}
+                    onChange={(ev) =>
+                      handleOpcionChange(i, "texto", ev.target.value)
+                    }
+                    fullWidth
+                    placeholder={`Opción ${i + 1}`}
+                  />
+                </Box>
+              ))}
+            </RadioGroup>
+          ) : (
+            opciones.map((op, i) => (
+              <OpcionField
+                key={i}
+                opcion={op}
+                index={i}
+                tipoEjercicio={tipoSeleccionado?.key || ""}
+                onChange={handleOpcionChange}
+                onRemove={handleRemoveOpcion}
+                showRemoveButton
+              />
+            ))
+          )}
+
+          <Button
+            variant="outlined"
+            fullWidth
+            sx={{ my: 2 }}
+            onClick={handleAddOpcion}
+          >
+            + Agregar opción
+          </Button>
+        </>
+      )}
       <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2 }}>
         {onCancel && (
           <Button variant="outlined" onClick={onCancel}>

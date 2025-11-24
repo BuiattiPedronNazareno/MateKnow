@@ -37,21 +37,26 @@ export default function CrearEjercicioPage() {
       const res = await ejercicioService.crearEjercicio(data);
       const newEjercicioId = res?.ejercicio?.id;
 
-      // If we were called with attachActividadId, try to append this ejercicio to that actividad
-      if (attachActividadId && attachClaseId && newEjercicioId) {
-        try {
-          // read current actividad to get ejercicioIds
-          const all = await actividadService.listarActividades(attachClaseId);
-          const current = (all.actividades || []).find((a: any) => a.id === attachActividadId);
-          const prevIds = (current?.ejercicios || []).map((e: any) => e.id);
-          const updatePayload = { ejercicioIds: [...prevIds, newEjercicioId] } as any;
-          await actividadService.editarActividad(attachClaseId, attachActividadId, updatePayload);
-          // after attaching, go to activity page
-          router.push(`/actividades/${attachClaseId}/ver/${attachActividadId}`);
-          return;
-        } catch (err) {
-          // fallback: navigate to ejercicios list
-          console.error('Error attaching ejercicio to actividad', err);
+      if (!data.tests) {
+        const res = await ejercicioService.crearEjercicio(data);
+        const newEjercicioId = res?.ejercicio?.id;
+
+        // If we were called with attachActividadId, try to append this ejercicio to that actividad
+        if (attachActividadId && attachClaseId && newEjercicioId) {
+          try {
+            // read current actividad to get ejercicioIds
+            const all = await actividadService.listarActividades(attachClaseId);
+            const current = (all.actividades || []).find((a: any) => a.id === attachActividadId);
+            const prevIds = (current?.ejercicios || []).map((e: any) => e.id);
+            const updatePayload = { ejercicioIds: [...prevIds, newEjercicioId] } as any;
+            await actividadService.editarActividad(attachClaseId, attachActividadId, updatePayload);
+            // after attaching, go to activity page
+            router.push(`/actividades/${attachClaseId}/ver/${attachActividadId}`);
+            return;
+          } catch (err) {
+            // fallback: navigate to ejercicios list
+            console.error('Error attaching ejercicio to actividad', err);
+          }
         }
       }
 
