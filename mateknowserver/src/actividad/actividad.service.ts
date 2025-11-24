@@ -703,58 +703,90 @@ export class ActividadService {
     }
 
     // ✅ LÓGICA DE CALIFICACIÓN MEJORADA
-    (ejercicios || []).forEach((item: any) => {
-      const ej = item.ejercicio;
-      if (!ej) return;
+ // Reemplaza la sección de calificación en el método finalizarIntento
+// Desde la línea donde dice: (ejercicios || []).forEach((item: any) => {
 
-      const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
+  // ✅ SOLUCIÓN: Usar for...of en lugar de forEach
+  for (const item of ejercicios || []) {
+    // ✅ FIX: Extraer el ejercicio correctamente (puede venir como objeto o array)
+    let ej: any;
+    if (Array.isArray(item.ejercicio)) {
+      ej = item.ejercicio[0]; // Si es array, tomamos el primer elemento
+    } else {
+      ej = item.ejercicio; // Si es objeto, lo usamos directamente
+    }
 
-      if (!respuestaUser) return;
+    if (!ej) continue;
 
-      let isCorrect = false;
+    const respuestaUser = respuestasUsuario.find((r: any) => r.ejercicioId === ej.id);
 
+    if (!respuestaUser) continue;
 
-      // ✅ DETECTAR TIPO DE EJERCICIO
-      const tipoKey = ej.tipo_ejercicio?.key || ej.tipo_ejercicio?.[0]?.key;
+    let isCorrect = false;
 
-      // ✅ CASO 1: EJERCICIO DE PROGRAMACIÓN
-      if (tipoKey === 'programming') {
-        const respuesta = respuestaUser.respuesta;
-        
-        // La respuesta es un objeto: { codigo, score, tests, lenguaje, ... }
-        if (respuesta && typeof respuesta === 'object' && respuesta.score !== undefined) {
-          const scorePercent = Number(respuesta.score) || 0;
-          const puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
-          
-          this.logger.log(`✅ Programming - Ejercicio ${ej.id}: ${scorePercent}% = ${puntosObtenidos}/${ej.puntos} pts`);
-          puntajeTotal += puntosObtenidos;
-        } else {
-          this.logger.warn(`⚠️ Ejercicio de programación ${ej.id} sin respuesta válida`);
-        }
-        return;
+    // ✅ DETECTAR TIPO DE EJERCICIO
+    let tipoKey = 'desconocido';
+    
+    if (ej.tipo_ejercicio) {
+      if (Array.isArray(ej.tipo_ejercicio) && ej.tipo_ejercicio.length > 0) {
+        tipoKey = ej.tipo_ejercicio[0].key;
+      } else if (ej.tipo_ejercicio.key) {
+        tipoKey = ej.tipo_ejercicio.key;
       }
+    }
 
-      // ✅ CASO 2: EJERCICIOS NORMALES (Multiple Choice, True/False, etc.)
-      if (ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
-        const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
-
-        if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
-          puntajeTotal += Number(ej.puntos);
-          
-          this.logger.log(`✅ Multiple Choice - Ejercicio ${ej.id}: ${ej.puntos} pts`);
-
+    // ✅ CASO 1: EJERCICIO DE PROGRAMACIÓN
+    if (tipoKey === 'programming') {
+      const respuesta = respuestaUser.respuesta;
+      
+      // La respuesta es un objeto: { codigo, score, tests, lenguaje, ... }
+      if (respuesta && typeof respuesta === 'object' && respuesta.score !== undefined) {
+        const scorePercent = Number(respuesta.score) || 0;
+        const puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
+        
+        this.logger.log(`✅ Programming - Ejercicio ${ej.id}: ${scorePercent}% = ${puntosObtenidos}/${ej.puntos} pts`);
+        puntajeTotal += puntosObtenidos;
+        
+        // Considerar correcto si score >= 100%
+        if (scorePercent >= 100) {
           isCorrect = true;
         }
+      } else {
+        this.logger.warn(`⚠️ Ejercicio de programación ${ej.id} sin respuesta válida`);
       }
-
-      // Cálculo de Racha
+      
+      // ✅ Actualizar racha
       if (isCorrect) {
         currentStreak++;
         if (currentStreak > maxStreak) maxStreak = currentStreak;
       } else {
         currentStreak = 0;
       }
-    });
+      
+      continue; // Pasar al siguiente ejercicio
+    }
+
+    // ✅ CASO 2: EJERCICIOS NORMALES (Multiple Choice, True/False, etc.)
+    if (ej.opcion_ejercicio && ej.opcion_ejercicio.length > 0) {
+      const opcionCorrecta = ej.opcion_ejercicio.find((o: any) => o.is_correcta);
+
+      if (opcionCorrecta && String(respuestaUser.respuesta).trim() === String(opcionCorrecta.id).trim()) {
+        puntajeTotal += Number(ej.puntos);
+        
+        this.logger.log(`✅ Multiple Choice - Ejercicio ${ej.id}: ${ej.puntos} pts`);
+
+        isCorrect = true;
+      }
+    }
+
+    // Cálculo de Racha
+    if (isCorrect) {
+      currentStreak++;
+      if (currentStreak > maxStreak) maxStreak = currentStreak;
+    } else {
+      currentStreak = 0;
+    }
+  }
 
     this.logger.log(`📊 Puntaje total calculado: ${puntajeTotal}`);
 

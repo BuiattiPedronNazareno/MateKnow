@@ -106,6 +106,60 @@ export default function CorregirActividadPage() {
 
   if (loading) return <Box sx={{ p: 5, display: 'flex', justifyContent: 'center', bgcolor: '#F5DEB3', minHeight: '100vh' }}><CircularProgress sx={{ color: '#8B4513' }} /></Box>;
 
+  // Función para calcular el puntaje REAL sumando todos los tipos de ejercicios
+  const calcularPuntajeTotal = () => {
+    if (!selectedIntento || !actividad?.ejercicios) return 0;
+
+    let total = 0;
+
+    actividad.ejercicios.forEach((ej: any) => {
+      // 1. Buscamos la respuesta del alumno para este ejercicio
+      const resp = selectedIntento.respuestas?.find((r: any) => r.ejercicioId === ej.id);
+      
+      // Si no respondió, no suma nada.
+      if (!resp) return; 
+
+      // 2. Lógica según el tipo de ejercicio
+      // Nota: Verificamos 'programming' o si el objeto tipo tiene key 'programming'
+      const esProgramacion = ej.tipo === 'programming' || ej.tipo?.key === 'programming';
+      
+      if (esProgramacion) {
+        // --- CASO PROGRAMACIÓN ---
+        // La respuesta viene en 'resp.respuesta'.
+        // Asumimos que el backend devuelve 'score' como porcentaje (0-100) basado en los pesos de los tests.
+        const respProgramming = resp.respuesta;
+        
+        if (respProgramming && typeof respProgramming === 'object' && respProgramming.score !== undefined) {
+          const porcentajeObtenido = Number(respProgramming.score) || 0; // Ej: 100, 50, 0
+          const puntosMaximosEjercicio = Number(ej.puntos) || 0;
+          
+          // Cálculo: (Porcentaje / 100) * Puntos Totales del Ejercicio
+          const puntosGanados = (porcentajeObtenido / 100) * puntosMaximosEjercicio;
+          total += puntosGanados;
+        }
+      } 
+      else if (ej.tipo === 'abierta') {
+        // --- CASO PREGUNTA ABIERTA (Manual) ---
+        // Usamos el puntaje manual guardado en la respuesta (resp.puntajeManual)
+        // Si el profesor acaba de corregir (puntajeManual !== null), usamos ese.
+        if (resp.puntajeManual !== undefined && resp.puntajeManual !== null) {
+          total += Number(resp.puntajeManual);
+        }
+      } 
+      else {
+        // --- CASO AUTOMÁTICO (Multiple Choice / V-F) ---
+        // El backend ya calculó esto y lo puso en resp.puntaje
+        if (resp.puntaje) {
+          total += Number(resp.puntaje);
+        }
+      }
+    });
+
+    // Retornamos con 2 decimales para precisión (ej: "8.50")
+    return total.toFixed(2);
+  };
+
+
   return (
     <MathJaxContext version={3} config={mathjaxConfig}>
       <Box sx={{ bgcolor: '#F5DEB3', minHeight: '100vh', pb: 5 }}>
@@ -171,7 +225,10 @@ export default function CorregirActividadPage() {
                       <Typography variant="h6" sx={{ color: '#3E2723' }}>
                         Revisando a: <b>{selectedIntento.usuario?.nombre}</b>
                       </Typography>
-                      <Chip label={`Puntaje Total: ${selectedIntento.puntaje}`} sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 'bold' }} />
+                      <Chip 
+                        label={`Puntaje Total: ${calcularPuntajeTotal()}`} 
+                        sx={{ bgcolor: '#8B4513', color: 'white', fontWeight: 'bold' }} 
+                      />
                    </Paper>
 
                   {actividad.ejercicios?.map((ej: any, index: number) => {
@@ -224,22 +281,72 @@ export default function CorregirActividadPage() {
                            
                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#FFF8E1', p: 2, borderRadius: 2 }}>
                               <Typography variant="body2" fontWeight="bold" sx={{ color: '#5D4037' }}>Calificación:</Typography>
-                              {ej.tipo === 'abierta' ? (
+                              {(ej.tipo === 'abierta' || ej.tipo === 'programming') ? (
                                 <>
-                                  <TextField 
-                                    type="number" size="small" label="Puntos" placeholder={String(ej.puntos)}
-                                    sx={{ width: 100, bgcolor: 'white' }}
-                                    value={puntajesManuales[ej.id] !== undefined ? puntajesManuales[ej.id] : (resp?.puntajeManual ?? '')}
-                                    onChange={(e) => setPuntajesManuales({...puntajesManuales, [ej.id]: e.target.value})}
-                                  />
-                                  <Button 
-                                    variant="contained" size="small"
-                                    onClick={() => handleCorregir(ej.id, ej.puntos)}
-                                    sx={{ bgcolor: '#8B4513', '&:hover': { bgcolor: '#654321' } }}
-                                  >
-                                    Guardar
-                                  </Button>
-                                  {resp?.corregido && <Chip label="Corregido" color="success" size="small" icon={<CheckCircle />} />}
+                                  {/* Solo permitir corrección manual en preguntas abiertas */}
+                                  {ej.tipo === 'abierta' ? (
+                                    <>
+                                      <TextField 
+                                        type="number" size="small" label="Puntos" placeholder={String(ej.puntos)}
+                                        sx={{ width: 100, bgcolor: 'white' }}
+                                        value={puntajesManuales[ej.id] !== undefined ? puntajesManuales[ej.id] : (resp?.puntajeManual ?? '')}
+                                        onChange={(e) => setPuntajesManuales({...puntajesManuales, [ej.id]: e.target.value})}
+                                      />
+                                      <Button 
+                                        variant="contained" size="small"
+                                        onClick={() => handleCorregir(ej.id, ej.puntos)}
+                                        sx={{ bgcolor: '#8B4513', '&:hover': { bgcolor: '#654321' } }}
+                                      >
+                                        Guardar
+                                      </Button>
+                                      {resp?.corregido && <Chip label="Corregido" color="success" size="small" icon={<CheckCircle />} />}
+                                    </>
+                                  ) : (
+                                    /* Ejercicio de Programación - Mostrar puntaje automático calculado */
+                                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                      <Typography sx={{ color: '#333', fontWeight: 600 }}>
+                                        Puntaje Automático (Programación)
+                                      </Typography>
+                                      
+                                      {/* Calcular y mostrar el puntaje del ejercicio de programación */}
+                                      {(() => {
+                                        // La respuesta de programación es un objeto: { codigo, score, tests, ... }
+                                        const respProgramming = resp?.respuesta;
+                                        
+                                        if (respProgramming && typeof respProgramming === 'object' && respProgramming.score !== undefined) {
+                                          const scorePercent = Number(respProgramming.score) || 0;
+                                          const puntosObtenidos = ((scorePercent / 100) * Number(ej.puntos)).toFixed(2);
+                                          
+                                          return (
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                              <Chip 
+                                                label={`${puntosObtenidos} / ${ej.puntos} pts`}
+                                                color={scorePercent >= 100 ? 'success' : scorePercent >= 50 ? 'warning' : 'error'}
+                                                sx={{ fontWeight: 'bold' }}
+                                              />
+                                              <Typography variant="caption" color="text.secondary">
+                                                ({scorePercent}% de tests aprobados)
+                                              </Typography>
+                                            </Box>
+                                          );
+                                        }
+                                        
+                                        return (
+                                          <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                            Sin respuesta o sin evaluar
+                                          </Typography>
+                                        );
+                                      })()}
+                                      
+                                      <Chip 
+                                        label="Calificado Automáticamente" 
+                                        size="small" 
+                                        icon={<CheckCircle />}
+                                        color="info"
+                                        variant="outlined"
+                                      />
+                                    </Box>
+                                  )}
                                 </>
                               ) : (
                                 <Typography sx={{ color: '#333' }}>

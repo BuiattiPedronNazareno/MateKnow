@@ -15,6 +15,7 @@ import {
 import { actividadService, Intento } from '@/app/services/actividadService';
 import { MathJax, MathJaxContext } from "better-react-mathjax";
 
+
 // Componente Timer con estilo Mate
 const ExamTimer = ({ fechaFin, onExpire }: { fechaFin: string, onExpire: () => void }) => {
   const [timeLeft, setTimeLeft] = useState('');
@@ -509,8 +510,12 @@ export default function RealizarActividadPage() {
               // DETECCIÓN DE TIPO: Abierta o Latex sin opciones se tratan igual
               const isTipoAbierta = ej.tipo === 'abierta' || (ej.tipo === 'latex' && (!ej.opciones || ej.opciones.length === 0));
 
+              // ⭐ NUEVO: Detectar ejercicios de programación
+              const isProgramming = ej.tipo === 'programming';
+
               // 2. LÓGICA DE CORRECCIÓN
               if (isTipoAbierta) {
+                // ... código existente para preguntas abiertas
                 if (fueCorregido && respObjeto.puntajeManual !== undefined) {
                   puntosObtenidos = Number(respObjeto.puntajeManual);
                   esCorrecto = puntosObtenidos > 0;
@@ -518,8 +523,21 @@ export default function RealizarActividadPage() {
                   puntosObtenidos = 0;
                   esCorrecto = false;
                 }
-              } else {
-                // LÓGICA AUTOMÁTICA
+              } 
+              // ⭐ NUEVO CASO: EJERCICIO DE PROGRAMACIÓN
+              else if (isProgramming) {
+                // La respuesta de programación es un objeto con { codigo, score, tests, ... }
+                if (respuestaUsuario && typeof respuestaUsuario === 'object' && respuestaUsuario.score !== undefined) {
+                  const scorePercent = Number(respuestaUsuario.score) || 0;
+                  puntosObtenidos = (scorePercent / 100) * Number(ej.puntos);
+                  esCorrecto = scorePercent >= 100; // Considera correcto si pasa todos los tests
+                } else {
+                  puntosObtenidos = 0;
+                  esCorrecto = false;
+                }
+              }
+              else {
+                // LÓGICA AUTOMÁTICA (Multiple Choice, True/False, etc.)
                 const opcionCorrecta = ej.opciones?.find((o: any) => o.is_correcta);
                 const idUsuario = String(respuestaUsuario || '').trim();
                 const idCorrecta = String(opcionCorrecta?.id || '').trim();
