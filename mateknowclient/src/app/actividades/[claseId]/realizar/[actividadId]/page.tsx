@@ -529,6 +529,10 @@ export default function RealizarActividadPage() {
               const isTipoAbierta = ej.tipo === 'abierta' || (ej.tipo === 'latex' && (!ej.opciones || ej.opciones.length === 0));
               const isProgramming = ej.tipo === 'programming';
 
+              // --- LÓGICA DE RECUPERACIÓN DE DATOS  ---
+              const codigoAlumno = respuestaUsuario?.attempt?.codigo || respuestaUsuario?.codigo;
+              const lenguajeAlumno = respuestaUsuario?.attempt?.lenguaje || respuestaUsuario?.lenguaje;
+
               if (isTipoAbierta) {
                 if (fueCorregido && respObjeto.puntajeManual !== undefined) {
                   puntosObtenidos = Number(respObjeto.puntajeManual);
@@ -563,6 +567,10 @@ export default function RealizarActividadPage() {
               if (isTipoAbierta && !fueCorregido) {
                 borderColor = '6px solid #ED6C02';
               }
+              // Si es programación y no hay código, borde rojo
+              if (isProgramming && !codigoAlumno) {
+                borderColor = '6px solid #D32F2F';
+              }
 
               return (
                 <Card key={ej.id} sx={{ mb: 3, borderRadius: 2, borderLeft: borderColor }}>
@@ -587,13 +595,41 @@ export default function RealizarActividadPage() {
                       <MathJax dynamic>{ej.enunciado}</MathJax>
                     </Typography>
 
-                    {/* PROGRAMMING REVIEW */}
+                    {/* --- PROGRAMMING REVIEW (Estilo mejorado) --- */}
                     {isProgramming && (
                       <Box sx={{ bgcolor: '#FAFAFA', p: 2, borderRadius: 1, border: '1px solid #e0e0e0' }}>
                         <Typography variant="caption" color="text.secondary" fontWeight="bold">Código enviado:</Typography>
-                        <Paper variant="outlined" sx={{ mt: 1, p: 2, bgcolor: '#fff', fontFamily: 'monospace', fontSize: '0.85rem', overflowX: 'auto' }}>
-                          <pre style={{ margin: 0 }}>{respuestaUsuario?.codigo || '(Sin código)'}</pre>
-                        </Paper>
+                        
+                        {codigoAlumno ? (
+                          <Box sx={{ mt: 1 }}>
+                            <Paper 
+                              elevation={0} 
+                              sx={{ 
+                                bgcolor: '#ffffff', 
+                                color: '#212121',  
+                                p: 2, 
+                                borderRadius: 1,
+                                fontFamily: 'monospace',
+                                fontSize: '0.85rem',
+                                overflowX: 'auto',
+                                border: '1px solid #e0e0e0'
+                              }}
+                            >
+                              <pre style={{ margin: 0 }}>{codigoAlumno}</pre>
+                            </Paper>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                              <CodeIcon fontSize="small" color="action" />
+                              <Typography variant="caption" color="text.secondary">
+                                Lenguaje: <b>{lenguajeAlumno || 'Desconocido'}</b>
+                              </Typography>
+                            </Box>
+                          </Box>
+                        ) : (
+                          <Typography sx={{ mt: 1, fontStyle: 'italic', color: '#D32F2F', fontWeight: 'bold' }}>
+                            Sin código entregado.
+                          </Typography>
+                        )}
+
                         <Typography variant="caption" sx={{ mt: 1, display: 'block', color: esCorrecto ? 'success.main' : 'error.main' }}>
                           Score obtenido: {respuestaUsuario?.score ? Number(respuestaUsuario.score).toFixed(0) : 0}%
                         </Typography>
@@ -645,7 +681,6 @@ export default function RealizarActividadPage() {
                       </Box>
                     )}
 
-                    {/* Bloque para pregunta abierta */}
                     {isTipoAbierta && (
                       <Box sx={{ mt: 1 }}>
                         <Box sx={{ bgcolor: '#F5F5F5', p: 2, borderRadius: 1 }}>
@@ -653,7 +688,6 @@ export default function RealizarActividadPage() {
                           <Typography sx={{ fontStyle: 'italic', mt: 1 }}>{respuestaUsuario || '(Sin respuesta)'}</Typography>
                         </Box>
                         
-                        {/* Estado de corrección */}
                         <Box sx={{ mt: 1.5 }}>
                           {fueCorregido ? (
                             <Chip label="Corregido por el profesor" size="small" color="success" variant="outlined" icon={<CheckCircle />} />
