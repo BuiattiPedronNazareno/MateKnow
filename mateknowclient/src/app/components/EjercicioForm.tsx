@@ -14,12 +14,9 @@ import {
   Alert,
   CircularProgress,
   Typography,
-  Tooltip,
-  IconButton,
   RadioGroup,
   Radio,
 } from "@mui/material";
-import { Info as InfoIcon } from "@mui/icons-material";
 import OpcionField from "./OpcionField";
 import {
   ejercicioService,
@@ -71,7 +68,8 @@ export default function EjercicioForm({
   const [tipoSeleccionado, setTipoSeleccionado] =
     useState<TipoEjercicio | null>(null);
   const [metadata, setMetadata] = useState<any>({ lenguaje: 'python' });
-  const [tests, setTests] = useState([]);
+  const [tests, setTests] = useState<any[]>([]);
+  const [internalLoading, setInternalLoading] = useState(false); // Nuevo estado local para carga interna
 
   useEffect(() => {
     const loadTipos = async () => {
@@ -142,6 +140,7 @@ export default function EjercicioForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFetchError("");
 
     const isUuid = (s?: string) =>
       !!s &&
@@ -188,30 +187,14 @@ export default function EjercicioForm({
       }  
 
       try {
-        setFetchError("");
+        setInternalLoading(true); // Bloquear UI mientras se crea internamente
         
-        console.log('📤 Datos a enviar (programming):', {
-          tipoId,
-          enunciado: enunciado.trim(),
-          puntos: parseInt(puntos) || 1,
-          metadata: {
-            lenguaje: metadata.lenguaje,
-            boilerplate: metadata.boilerplate || "",
-          },
-          tests: tests.map((t: any) => ({
-            stdin: t.stdin || "",
-            expected: t.expected,
-            weight: t.weight ?? 1,
-            timeout_seconds: t.timeout_seconds ?? 3, 
-            public: t.public ?? false,
-          })),
-        });
+        console.log('📤 Creando ejercicio de programación internamente...');
 
-        // ✅ USAR EL MÉTODO CORRECTO DEL SERVICIO
         const result = await ejercicioService.crearEjercicioProgramacion({
           tipoId,
           enunciado: enunciado.trim(),
-          puntos: parseInt(puntos) || 1,
+          puntos: puntosEjercicio,
           metadata: {
             lenguaje: metadata.lenguaje,
             boilerplate: metadata.boilerplate || "",
@@ -225,37 +208,33 @@ export default function EjercicioForm({
           })),
         });
 
-        console.log("✅ Ejercicio de programación creado:", result);
+        // Verificación robusta del ID
+        const createdId = result.ejercicio?.id;
 
-        // ✅ LLAMAR AL onSubmit CON LA ESTRUCTURA CORRECTA
-        // Pasamos TODA la info necesaria para que page.tsx pueda vincular el ejercicio
+        if (!createdId) {
+            console.error("Respuesta del servidor:", result);
+            throw new Error("El servidor no devolvió el ID del ejercicio creado.");
+        }
+
+        console.log("✅ Ejercicio de programación creado con ID:", createdId);
+
+        // Pasamos el ID garantizado
         onSubmit({
-          id: result.ejercicio.id,
+          id: createdId,
           tipoId,
           enunciado: enunciado.trim(),
-          puntos: parseInt(puntos) || 1,
+          puntos: puntosEjercicio,
           isVersus: false,
           opciones: [],
-          // ⚠️ IMPORTANTE: También pasamos metadata y tests para que page.tsx los tenga disponibles
-          metadata: {
-            lenguaje: metadata.lenguaje,
-            boilerplate: metadata.boilerplate || "",
-          },
-          tests: tests.map((t: any) => ({
-            stdin: t.stdin || "",
-            expected: t.expected,
-            weight: t.weight ?? 1,
-            timeout_seconds: t.timeout_seconds ?? 3,
-            public: t.public ?? false,
-          })),
         } as any);
 
-        return;
       } catch (err: any) {
         console.error("❌ Error creating programming exercise:", err);
         setFetchError(err.message || "Error al crear ejercicio de programación");
-        return;
+      } finally {
+        setInternalLoading(false);
       }
+      return; // Detener flujo aquí para programación
     }
     // ==================== FIN LÓGICA PROGRAMACIÓN ====================
 
@@ -282,6 +261,8 @@ export default function EjercicioForm({
       opciones: opciones.map((o) => ({ ...o, texto: o.texto.trim() })),
     });
   };
+
+  const isWorking = loading || internalLoading;
 
   return (
     <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
@@ -434,8 +415,8 @@ export default function EjercicioForm({
             Cancelar
           </Button>
         )}
-        <Button type="submit" variant="contained">
-          {loading ? (
+        <Button type="submit" variant="contained" disabled={isWorking}>
+          {isWorking ? (
             <CircularProgress size={24} color="inherit" />
           ) : (
             submitButtonText
