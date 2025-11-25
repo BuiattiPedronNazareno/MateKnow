@@ -2,6 +2,8 @@
 
 > **Refuerza tus conocimientos universitarios a través de la competitividad y el juego.**
 
+<video src="Mateknow Demo.mp4" controls width="100%"></video>
+
 ## 🌐 Despliegue en Vivo (Demo)
 
 El proyecto se encuentra desplegado y operativo en **Render**. Puedes acceder a la aplicación en el siguiente enlace:
