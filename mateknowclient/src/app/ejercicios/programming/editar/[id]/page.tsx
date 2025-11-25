@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { ejercicioService } from "@/app/services/ejercicioService";
 import { programmingService } from "@/app/services/programmingService";
 import ProgramacionEditor from "@/app/components/ProgramacionEditor";
 
-export default function EditarProgramming({ params }: { params: { id: string } }) {
-  const { id } = params;
+export default function EditarProgramming({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const id = resolvedParams.id;
 
   const [ejercicio, setEjercicio] = useState<any>(null);
   const [metadata, setMetadata] = useState<any>({});
@@ -23,7 +24,7 @@ export default function EditarProgramming({ params }: { params: { id: string } }
         const t = await programmingService.getTests(id);
 
         setEjercicio(e.ejercicio);
-        setMetadata(e.ejercicio.metadata ?? {});
+        setMetadata((e.ejercicio as any).metadata ?? {});
         setEnunciado(e.ejercicio.enunciado);
         setTests(t);
       } catch (err: any) {
@@ -59,8 +60,6 @@ export default function EditarProgramming({ params }: { params: { id: string } }
       <h1>Editar ejercicio de programación</h1>
 
       <ProgramacionEditor
-        enunciado={enunciado}
-        setEnunciado={setEnunciado}
         metadata={metadata}
         setMetadata={setMetadata}
         tests={tests}
