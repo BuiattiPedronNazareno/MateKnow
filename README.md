@@ -104,8 +104,6 @@ Este proyecto utiliza **Bun** como gestor de paquetes principal.
     # Ejecutar el servidor de desarrollo
     bun run dev
 
-Aquí tienes ambos archivos formateados como `example`. He sustituido tus credenciales reales por marcadores de posición para seguridad. Todo está dentro de un bloque usando sangría (sin comillas triples) como pediste:
-
 
 ### ARCHIVO: mateknowserver/.env.example (Backend)
 ```
