@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { programmingService } from "@/app/services/programmingService";
 
-export default function IntentosProfesor({ params }) {
-  const id = params.id;
-  const [attempts, setAttempts] = useState([]);
+export default function IntentosProfesor({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const id = resolvedParams.id;
+  const [attempts, setAttempts] = useState<any[]>([]);
 
   useEffect(() => {
     programmingService.getAttempts(id).then((r) => setAttempts(r));
-  }, []);
+  }, [id]);
 
   return (
     <div>
